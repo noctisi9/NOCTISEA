@@ -1,12 +1,18 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 
 export default function LandingPage({ navigate }) {
-  const { requestNotificationPermission } = useApp();
+  const context = useApp() || {};
+  const { requestNotificationPermission = () => {}, state = {}, loading = false } = context;
+  const signals = state.signals || [];
+
   const particlesRef = useRef(null);
 
   useEffect(() => {
-    requestNotificationPermission();
+    if (typeof requestNotificationPermission === "function") {
+      requestNotificationPermission();
+    }
+    
     const canvas = particlesRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -44,8 +50,19 @@ export default function LandingPage({ navigate }) {
       canvas.height = window.innerHeight;
     };
     window.addEventListener("resize", resize);
-    return () => { cancelAnimationFrame(animId); window.removeEventListener("resize", resize); };
-  }, []);
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
+    };
+  }, [requestNotificationPermission]);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#0A0A0C', color: '#D4AF37', fontFamily: 'sans-serif' }}>
+        <p>INITIALIZING NOCTIS CORE...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="landing-root">
@@ -63,11 +80,8 @@ export default function LandingPage({ navigate }) {
         <button className="landing-cta" onClick={() => navigate("/dashboard")}>
           <span className="cta-pulse" />
           <span className="cta-text">ENTER THE MARKETS</span>
-          <span className="cta-arrow">→</span>
         </button>
-        <p className="landing-version">v2.4.1 · Deriv WebSocket API</p>
       </div>
-      <div className="landing-grid-overlay" />
     </div>
   );
 }
