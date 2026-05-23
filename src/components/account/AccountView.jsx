@@ -8,11 +8,18 @@ const savedProfiles = [
 
 export default function AccountView() {
   const { state, dispatch, connectDeriv } = useApp();
-  const [form, setForm] = useState({ server: state.account.server || "", username: state.account.username || "", password: "" });
+  const [form, setForm] = useState({
+    server: state.account.server || "",
+    username: state.account.username || "",
+    password: "",
+  });
+  const [connecting, setConnecting] = useState(false);
 
-  const handleConnect = () => {
-    dispatch({ type: "UPDATE_ACCOUNT", payload: { server: form.server, username: form.username } });
-    connectDeriv(form.password);
+  const handleConnect = async () => {
+    setConnecting(true);
+    dispatch({ type: "SET_ACCOUNT", payload: { server: form.server, username: form.username, password: form.password } });
+    connectDeriv(form.password || null);
+    setTimeout(() => setConnecting(false), 3000);
   };
 
   return (
@@ -24,7 +31,7 @@ export default function AccountView() {
 
       <div className="form-card">
         <div className="form-group">
-          <label className="form-label">Broker Server Domain</label>
+          <label className="form-label">BROKER SERVER DOMAIN</label>
           <input
             className="form-input"
             type="text"
@@ -34,29 +41,46 @@ export default function AccountView() {
           />
         </div>
         <div className="form-group">
-          <label className="form-label">Username / Login ID</label>
+          <label className="form-label">USERNAME / LOGIN ID</label>
           <input
             className="form-input"
             type="text"
-            placeholder="Deriv / MetaTrader ID"
+            placeholder="Deriv account ID e.g. CR123456"
             value={form.username}
             onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
           />
         </div>
         <div className="form-group">
-          <label className="form-label">API Token / Password</label>
+          <label className="form-label">API TOKEN</label>
           <input
             className="form-input"
             type="password"
-            placeholder="API token or MT password"
+            placeholder="Deriv API token (from app.deriv.com)"
             value={form.password}
             onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
           />
         </div>
-        <button className="form-btn" onClick={handleConnect}>
-          {state.connected ? "✓ CONNECTED" : "CONNECT"}
+        <button className="form-btn" onClick={handleConnect} disabled={connecting}>
+          {connecting ? "CONNECTING..." : state.connected ? "✓ RECONNECT" : "CONNECT"}
         </button>
       </div>
+
+      {state.connected && (
+        <div className="account-info-card">
+          <div className="ai-row">
+            <span className="ai-label">BALANCE</span>
+            <span className="ai-val">${(state.account.balance || 0).toFixed(2)}</span>
+          </div>
+          <div className="ai-row">
+            <span className="ai-label">ENVIRONMENT</span>
+            <span className="ai-val">{state.environment}</span>
+          </div>
+          <div className="ai-row">
+            <span className="ai-label">STATUS</span>
+            <span className="ai-val val-pos">● LIVE</span>
+          </div>
+        </div>
+      )}
 
       <div className="section-label">SAVED PROFILES</div>
       <div className="profiles-grid">
@@ -72,22 +96,12 @@ export default function AccountView() {
         ))}
       </div>
 
-      {state.connected && (
-        <div className="account-info-card">
-          <div className="ai-row">
-            <span className="ai-label">Balance</span>
-            <span className="ai-val">${(state.account.balance || 0).toFixed(2)}</span>
-          </div>
-          <div className="ai-row">
-            <span className="ai-label">Environment</span>
-            <span className="ai-val">{state.environment}</span>
-          </div>
-          <div className="ai-row">
-            <span className="ai-label">Status</span>
-            <span className="ai-val val-pos">● LIVE</span>
-          </div>
-        </div>
-      )}
+      <div className="api-token-hint">
+        <div className="hint-title">HOW TO GET YOUR API TOKEN</div>
+        <div className="hint-text">1. Go to app.deriv.com/account/api-token</div>
+        <div className="hint-text">2. Create a token with Read + Trade permissions</div>
+        <div className="hint-text">3. Paste it into the API Token field above</div>
+      </div>
     </div>
   );
 }

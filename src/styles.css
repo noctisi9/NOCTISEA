@@ -1356,3 +1356,233 @@ html, body, #root {
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type="number"] { -moz-appearance: textfield; }
+
+/* ────────────────────────────────────────────────────────────────
+   CANDLE CHART
+──────────────────────────────────────────────────────────────── */
+
+.candle-chart-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.candle-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(212,175,55,0.07);
+}
+
+.candle-asset-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.12em;
+}
+
+.candle-timer {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--gold-primary);
+  letter-spacing: 0.08em;
+}
+
+.candle-canvas {
+  display: block;
+  width: 100%;
+  height: 200px;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   INDICATOR LABEL ROW (above oscillator)
+──────────────────────────────────────────────────────────────── */
+
+.indicator-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px 0;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   CANDLE COUNTER DOTS
+──────────────────────────────────────────────────────────────── */
+
+.candle-counter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid rgba(212,175,55,0.2);
+  border-radius: var(--radius);
+}
+
+.cc-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.12em;
+}
+
+.cc-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.cc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+
+.cc-filled {
+  background: var(--gold-primary);
+  box-shadow: 0 0 6px rgba(212,175,55,0.5);
+  border-color: var(--gold-secondary);
+}
+
+.cc-phase {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gold-secondary);
+  letter-spacing: 0.1em;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   ENGINE STATUS
+──────────────────────────────────────────────────────────────── */
+
+.engine-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+}
+
+.engine-active {
+  border-color: rgba(212,175,55,0.3);
+  color: var(--gold-primary);
+  background: rgba(212,175,55,0.05);
+}
+
+.engine-idle { color: var(--text-secondary); }
+
+.edot-live {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gold-primary);
+  box-shadow: 0 0 6px rgba(212,175,55,0.6);
+  animation: pulse-dot 1.5s infinite;
+  flex-shrink: 0;
+}
+
+.edot-off {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #444;
+  flex-shrink: 0;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   EXEC CONTROLS
+──────────────────────────────────────────────────────────────── */
+
+.exec-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.exec-start, .exec-stop {
+  flex: 1;
+  padding: 14px;
+  border-radius: var(--radius);
+  border: 1px solid;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.exec-start {
+  background: rgba(212,175,55,0.1);
+  border-color: var(--gold-primary);
+  color: var(--gold-primary);
+}
+
+.exec-start:hover:not(:disabled) {
+  background: rgba(212,175,55,0.2);
+  box-shadow: 0 0 20px rgba(212,175,55,0.25);
+}
+
+.exec-stop {
+  background: rgba(231,76,60,0.1);
+  border-color: #E74C3C;
+  color: #E74C3C;
+}
+
+.exec-stop:hover:not(:disabled) {
+  background: rgba(231,76,60,0.2);
+  box-shadow: 0 0 20px rgba(231,76,60,0.25);
+}
+
+.exec-start-disabled, .exec-stop-disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.exec-icon { font-size: 12px; }
+
+/* ────────────────────────────────────────────────────────────────
+   API TOKEN HINT BLOCK
+──────────────────────────────────────────────────────────────── */
+
+.api-token-hint {
+  background: rgba(212,175,55,0.04);
+  border: 1px solid rgba(212,175,55,0.15);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hint-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--gold-secondary);
+  letter-spacing: 0.2em;
+  margin-bottom: 4px;
+}
+
+.hint-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ────────────────────────────────────────────────────────────────
+   PARAM SUBLABEL
+──────────────────────────────────────────────────────────────── */
+
+.param-sublabel {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: -4px;
+}
