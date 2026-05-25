@@ -1,25 +1,28 @@
 import { useState } from "react";
 import { useApp } from "../../context/AppContext";
 
-const savedProfiles = [
-  { id: 1, label: "Deriv Demo", server: "demo.deriv.com", username: "CR123456", active: true },
-  { id: 2, label: "Deriv Real", server: "real.deriv.com", username: "CR789012", active: false },
-];
-
 export default function AccountView() {
-  const { state, dispatch, connectDeriv } = useApp();
+  const { state, dispatch, connectDeriv, connectPublic } = useApp();
   const [form, setForm] = useState({
-    server: state.account.server || "",
-    username: state.account.username || "",
-    password: "",
+    appId:     state.account.appId     || "",
+    token:     state.account.token     || "",
+    accountId: state.account.username  || "",
   });
   const [connecting, setConnecting] = useState(false);
 
   const handleConnect = async () => {
+    if (!form.appId || !form.token || !form.accountId) {
+      dispatch({ type: "SET_CONNECT_ERROR", payload: "All three fields are required" });
+      return;
+    }
     setConnecting(true);
-    dispatch({ type: "SET_ACCOUNT", payload: { server: form.server, username: form.username, password: form.password } });
-    connectDeriv(form.password || null);
-    setTimeout(() => setConnecting(false), 3000);
+    dispatch({ type: "SET_ACCOUNT", payload: { appId: form.appId, token: form.token, username: form.accountId } });
+    await connectDeriv(form.appId, form.token, form.accountId);
+    setConnecting(false);
+  };
+
+  const handlePublic = () => {
+    connectPublic();
   };
 
   return (
@@ -29,78 +32,87 @@ export default function AccountView() {
         <h2 className="subview-title">Account</h2>
       </div>
 
+      {/* Error banner */}
+      {state.connectError && (
+        <div className="conn-error-banner">
+          <span>⚠ {state.connectError}</span>
+          <button onClick={() => dispatch({ type: "SET_CONNECT_ERROR", payload: null })}>✕</button>
+        </div>
+      )}
+
       <div className="form-card">
         <div className="form-group">
-          <label className="form-label">BROKER SERVER DOMAIN</label>
+          <label className="form-label">APP ID</label>
+          <div className="form-hint">From developers.deriv.com → Register app (PAT type)</div>
           <input
             className="form-input"
             type="text"
-            placeholder="e.g. ws.binaryws.com"
-            value={form.server}
-            onChange={e => setForm(f => ({ ...f, server: e.target.value }))}
+            placeholder="e.g. 12345"
+            value={form.appId}
+            onChange={e => setForm(f => ({ ...f, appId: e.target.value }))}
           />
         </div>
         <div className="form-group">
-          <label className="form-label">USERNAME / LOGIN ID</label>
+          <label className="form-label">ACCOUNT ID</label>
+          <div className="form-hint">Your CR or VRTC number from app.deriv.com</div>
           <input
             className="form-input"
             type="text"
-            placeholder="Deriv account ID e.g. CR123456"
-            value={form.username}
-            onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+            placeholder="e.g. CR00122622 or VRTC1234567"
+            value={form.accountId}
+            onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))}
           />
         </div>
         <div className="form-group">
-          <label className="form-label">API TOKEN</label>
+          <label className="form-label">PAT TOKEN</label>
+          <div className="form-hint">From developers.deriv.com → API tokens (trade + account_manage scope)</div>
           <input
             className="form-input"
             type="password"
-            placeholder="Deriv API token (from app.deriv.com)"
-            value={form.password}
-            onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+            placeholder="Your Personal Access Token"
+            value={form.token}
+            onChange={e => setForm(f => ({ ...f, token: e.target.value }))}
           />
         </div>
         <button className="form-btn" onClick={handleConnect} disabled={connecting}>
           {connecting ? "CONNECTING..." : state.connected ? "✓ RECONNECT" : "CONNECT"}
         </button>
+        <button className="form-btn-secondary" onClick={handlePublic}>
+          MARKET DATA ONLY (no auth)
+        </button>
       </div>
 
+      {/* Live account info */}
       {state.connected && (
         <div className="account-info-card">
           <div className="ai-row">
             <span className="ai-label">BALANCE</span>
-            <span className="ai-val">${(state.account.balance || 0).toFixed(2)}</span>
+            <span className="ai-val">${(state.account.balance || 0).toFixed(2)} {state.account.currency}</span>
+          </div>
+          <div className="ai-row">
+            <span className="ai-label">ACCOUNT</span>
+            <span className="ai-val">{state.account.username}</span>
           </div>
           <div className="ai-row">
             <span className="ai-label">ENVIRONMENT</span>
-            <span className="ai-val">{state.environment}</span>
+            <span className={`ai-val ${state.environment === "LIVE" ? "val-pos" : ""}`}>
+              {state.environment}
+            </span>
           </div>
           <div className="ai-row">
             <span className="ai-label">STATUS</span>
-            <span className="ai-val val-pos">● LIVE</span>
+            <span className="ai-val val-pos">● CONNECTED</span>
           </div>
         </div>
       )}
 
-      <div className="section-label">SAVED PROFILES</div>
-      <div className="profiles-grid">
-        {savedProfiles.map(p => (
-          <div key={p.id} className={`profile-card ${p.active ? "profile-active" : ""}`}>
-            <div className="profile-top">
-              <span className="profile-name">{p.label}</span>
-              {p.active && <span className="profile-badge">ACTIVE</span>}
-            </div>
-            <div className="profile-server">{p.server}</div>
-            <div className="profile-user">{p.username}</div>
-          </div>
-        ))}
-      </div>
-
+      {/* Setup guide */}
       <div className="api-token-hint">
-        <div className="hint-title">HOW TO GET YOUR API TOKEN</div>
-        <div className="hint-text">1. Go to app.deriv.com/account/api-token</div>
-        <div className="hint-text">2. Create a token with Read + Trade permissions</div>
-        <div className="hint-text">3. Paste it into the API Token field above</div>
+        <div className="hint-title">SETUP GUIDE</div>
+        <div className="hint-text">1. Go to developers.deriv.com and log in</div>
+        <div className="hint-text">2. Register a new app → choose PAT type → get App ID</div>
+        <div className="hint-text">3. Go to API tokens → create token with trade + account_manage</div>
+        <div className="hint-text">4. Your Account ID is CR… or VRTC… from app.deriv.com top right</div>
       </div>
     </div>
   );
