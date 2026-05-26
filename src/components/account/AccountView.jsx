@@ -4,21 +4,52 @@ import { useApp } from "../../context/AppContext";
 export default function AccountView() {
   const { state, dispatch, connectDeriv, connectPublic } = useApp();
   const [form, setForm] = useState({
-    appId:     state.account.appId     || "",
-    accountId: state.account.accountId || "",
-    token:     state.account.token     || "",
+    appId: state.account.appId || "",
+    token: state.account.token || "",
   });
+  const [accounts, setAccounts]   = useState([]);
+  const [loading, setLoading]     = useState(false);
   const [connecting, setConnecting] = useState(false);
 
-  const handleConnect = async () => {
-    if (!form.appId || !form.accountId || !form.token) {
-      dispatch({ type: "SET_CONNECT_ERROR", payload: "All three fields are required" });
+  // Step 1 — fetch accounts list using PAT token
+  const fetchAccounts = async () => {
+    if (!form.appId || !form.token) {
+      dispatch({ type: "SET_CONNECT_ERROR", payload: "App ID and PAT Token are required" });
       return;
     }
     dispatch({ type: "CLEAR_CONNECT_ERROR" });
-    dispatch({ type: "SET_ACCOUNT", payload: { appId: form.appId, accountId: form.accountId, token: form.token } });
+    setLoading(true);
+    try {
+      const res = await fetch("https://api.derivws.com/trading/v1/options/accounts", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${form.token}`,
+          "Deriv-App-ID": form.appId,
+        },
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        const msg = json?.errors?.[0]?.message || `Error ${res.status}`;
+        dispatch({ type: "SET_CONNECT_ERROR", payload: msg });
+        setLoading(false);
+        return;
+      }
+      const list = json?.data || [];
+      setAccounts(list);
+      if (list.length === 0) {
+        dispatch({ type: "SET_CONNECT_ERROR", payload: "No Options accounts found for this token" });
+      }
+    } catch (err) {
+      dispatch({ type: "SET_CONNECT_ERROR", payload: `Failed: ${err.message}` });
+    }
+    setLoading(false);
+  };
+
+  // Step 2 — connect to selected account
+  const handleSelectAccount = async (acc) => {
     setConnecting(true);
-    await connectDeriv(form.appId, form.token, form.accountId);
+    dispatch({ type: "SET_ACCOUNT", payload: { appId: form.appId, token: form.token, accountId: acc.id, username: acc.id } });
+    await connectDeriv(form.appId, form.token, acc.id);
     setConnecting(false);
   };
 
@@ -44,7 +75,7 @@ export default function AccountView() {
       <div className="form-card">
         <div className="form-group">
           <label className="form-label">APP ID</label>
-          <div className="form-hint">From developers.deriv.com → Registered Apps → your PAT app</div>
+          <div className="form-hint">From developers.deriv.com → Registered Apps</div>
           <input
             className="form-input"
             type="text"
@@ -54,19 +85,8 @@ export default function AccountView() {
           />
         </div>
         <div className="form-group">
-          <label className="form-label">ACCOUNT ID</label>
-          <div className="form-hint">Your CR or VRTC number from app.deriv.com top right</div>
-          <input
-            className="form-input"
-            type="text"
-            placeholder="e.g. CR00122622"
-            value={form.accountId}
-            onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))}
-          />
-        </div>
-        <div className="form-group">
           <label className="form-label">PAT TOKEN</label>
-          <div className="form-hint">From developers.deriv.com → API tokens → your token (pat_...)</div>
+          <div className="form-hint">From developers.deriv.com → API tokens</div>
           <input
             className="form-input"
             type="password"
@@ -76,14 +96,41 @@ export default function AccountView() {
           />
         </div>
 
-        <button className="form-btn" onClick={handleConnect} disabled={connecting}>
-          {connecting ? "CONNECTING..." : state.connected ? "✓ RECONNECT" : "CONNECT"}
+        <button className="form-btn" onClick={fetchAccounts} disabled={loading}>
+          {loading ? "FETCHING ACCOUNTS..." : "FETCH MY ACCOUNTS"}
         </button>
         <button className="form-btn-secondary" onClick={handlePublic}>
           MARKET DATA ONLY (NO AUTH)
         </button>
       </div>
 
+      {/* Account picker */}
+      {accounts.length > 0 && (
+        <>
+          <div className="section-label">SELECT ACCOUNT TO CONNECT</div>
+          <div className="profiles-grid">
+            {accounts.map(acc => (
+              <button
+                key={acc.id}
+                className={`profile-card ${connecting ? "profile-disabled" : ""}`}
+                style={{ textAlign: "left", cursor: "pointer", background: "none", width: "100%" }}
+                onClick={() => handleSelectAccount(acc)}
+                disabled={connecting}
+              >
+                <div className="profile-top">
+                  <span className="profile-name">{acc.id}</span>
+                  <span className="pbadge">{acc.is_virtual ? "DEMO" : "REAL"}</span>
+                </div>
+                <div className="profile-server">
+                  {acc.currency} · Balance: {acc.balance ?? "—"}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Connected info */}
       {state.connected && (
         <div className="account-info-card">
           <div className="ai-row">
@@ -106,11 +153,10 @@ export default function AccountView() {
       )}
 
       <div className="api-token-hint">
-        <div className="hint-title">SETUP GUIDE</div>
-        <div className="hint-text">1. developers.deriv.com → Registered Apps → copy your App ID (e.g. 33n1Dz...)</div>
-        <div className="hint-text">2. developers.deriv.com → API tokens → copy your pat_... token</div>
-        <div className="hint-text">3. Account ID = CR or VRTC number from app.deriv.com top-right</div>
-        <div className="hint-text">4. Fill all 3 fields above → CONNECT</div>
+        <div className="hint-title">HOW IT WORKS</div>
+        <div className="hint-text">1. Enter App ID + PAT Token → Fetch Accounts</div>
+        <div className="hint-text">2. Your accounts list appears — tap one to connect</div>
+        <div className="hint-text">3. App auto-gets the correct account ID format</div>
       </div>
     </div>
   );
