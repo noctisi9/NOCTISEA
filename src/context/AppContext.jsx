@@ -9,14 +9,7 @@ const initialState = {
   activeAsset: "BOOM_1000",
   currentView: "signals",
   drawerOpen: false,
-  account: {
-    server: "",
-    username: "",
-    appId: "",
-    token: "",
-    balance: 0,
-    currency: "USD",
-  },
+  account: { server: "", username: "", token: "", balance: 0, currency: "USD" },
   signals: { ao: 0, ac: 0, direction: null },
   candles: [],
   currentPrice: 0,
@@ -53,7 +46,6 @@ function reducer(state, action) {
     case "SET_LOTSIZE":        return { ...state, lotSize: action.payload };
     case "SET_POSITION_COUNT": return { ...state, positionCount: action.payload };
     case "SET_CANDLE":         return { ...state, candle: action.payload };
-    case "SET_HISTORY":        return { ...state, history: action.payload };
     case "ADD_HISTORY":        return { ...state, history: [action.payload, ...state.history] };
     case "ADD_NOTIFICATION":   return { ...state, notifications: [action.payload, ...state.notifications].slice(0, 50) };
     case "SET_WHATSAPP":       return { ...state, whatsappStatus: action.payload };
@@ -61,29 +53,30 @@ function reducer(state, action) {
     case "SET_MARGIN_ERROR":   return { ...state, marginError: action.payload };
     case "CLEAR_MARGIN_ERROR": return { ...state, marginError: null };
     case "SET_CONNECT_ERROR":  return { ...state, connectError: action.payload };
+    case "CLEAR_CONNECT_ERROR":return { ...state, connectError: null };
     default: return state;
   }
 }
 
-// ── Symbol map ──────────────────────────────────────────────────
 const SYMBOL_MAP = {
   BOOM_1000:  "BOOM1000",
   CRASH_1000: "CRASH1000",
 };
 
+// Deriv WebSocket URL — supports PAT token via authorize message
+const WS_URL = "wss://ws.binaryws.com/websockets/v3?app_id=1089";
+
 export function AppProvider({ children, navigate }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  const wsRef          = useRef(null);
+  const wsRef           = useRef(null);
   const candleBufferRef = useRef([]);
-  const autoStateRef   = useRef({ triggered: false, candlePhase: 0 });
-  const stateRef       = useRef(state);
-  const reqIdRef       = useRef(1);
-  stateRef.current     = state;
+  const autoStateRef    = useRef({ triggered: false, candlePhase: 0 });
+  const stateRef        = useRef(state);
+  const tokenRef        = useRef("");
+  stateRef.current      = state;
 
-  const nextReqId = () => ++reqIdRef.current;
-
-  // ── Notifications ─────────────────────────────────────────────
+  // ── Notifications ──────────────────────────────────────────
   const requestNotificationPermission = () => {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
@@ -97,22 +90,22 @@ export function AppProvider({ children, navigate }) {
     }
   }, []);
 
-  // ── Indicator computation ─────────────────────────────────────
+  // ── Indicator computation ──────────────────────────────────
   const computeAO = (candles) => {
     if (candles.length < 34) return 0;
-    const median = (c) => (parseFloat(c.high) + parseFloat(c.low)) / 2;
-    const sma5  = candles.slice(-5).reduce((s, c) => s + median(c), 0) / 5;
-    const sma34 = candles.slice(-34).reduce((s, c) => s + median(c), 0) / 34;
+    const med = (c) => (parseFloat(c.high) + parseFloat(c.low)) / 2;
+    const sma5  = candles.slice(-5).reduce((s, c) => s + med(c), 0) / 5;
+    const sma34 = candles.slice(-34).reduce((s, c) => s + med(c), 0) / 34;
     return sma5 - sma34;
   };
 
   const computeAC = (candles) => {
     if (candles.length < 40) return 0;
-    const aoValues = candles.slice(-10).map((_, i) =>
+    const aoVals = candles.slice(-10).map((_, i) =>
       computeAO(candles.slice(0, candles.length - 9 + i + 1))
     );
-    const ao   = aoValues[aoValues.length - 1];
-    const sma5 = aoValues.slice(-5).reduce((s, v) => s + v, 0) / 5;
+    const ao   = aoVals[aoVals.length - 1];
+    const sma5 = aoVals.slice(-5).reduce((s, v) => s + v, 0) / 5;
     return ao - sma5;
   };
 
@@ -129,7 +122,7 @@ export function AppProvider({ children, navigate }) {
     dispatch({ type: "SET_CANDLES", payload: [...buf.slice(-80)] });
   }, []);
 
-  // ── Margin check ──────────────────────────────────────────────
+  // ── Margin check ───────────────────────────────────────────
   const checkMarginSafety = (lot, count, balance) => {
     if (!balance || balance <= 0) return false;
     if (balance < 10  && count > 2)  return true;
@@ -138,21 +131,19 @@ export function AppProvider({ children, navigate }) {
     return (lot * count * 50) > balance;
   };
 
-  // ── WebSocket send helper ─────────────────────────────────────
+  // ── WS send helper ─────────────────────────────────────────
   const wsSend = useCallback((payload) => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ ...payload, req_id: nextReqId() }));
+      ws.send(JSON.stringify(payload));
     }
   }, []);
 
-  // ── Subscribe to asset ────────────────────────────────────────
+  // ── Subscribe to market data ───────────────────────────────
   const subscribeToAsset = useCallback((asset) => {
     const symbol = SYMBOL_MAP[asset] || "BOOM1000";
-    // Clear old subscriptions
     wsSend({ forget_all: "candles" });
     wsSend({ forget_all: "ticks" });
-    // M1 candle history
     wsSend({
       ticks_history: symbol,
       count: 200,
@@ -161,74 +152,57 @@ export function AppProvider({ children, navigate }) {
       granularity: 60,
       subscribe: 1,
     });
-    // Live ticks for price
     wsSend({ ticks: symbol, subscribe: 1 });
   }, [wsSend]);
 
-  // ── Trade entry / exit ────────────────────────────────────────
+  // ── Trade entry ────────────────────────────────────────────
   const executeEntry = useCallback(() => {
     const { account, lotSize, positionCount, activeAsset } = stateRef.current;
     if (checkMarginSafety(lotSize, positionCount, account.balance)) {
-      dispatch({
-        type: "SET_MARGIN_ERROR",
-        payload: `ABOVE LIMIT: ${positionCount} positions exceeds safe margin for $${account.balance} account.`,
-      });
+      dispatch({ type: "SET_MARGIN_ERROR", payload: `ABOVE LIMIT: ${positionCount} positions exceeds safe margin for $${account.balance} account.` });
       pushNotification("Margin Guard", "Trade blocked — ABOVE LIMIT");
       return;
     }
     const direction = activeAsset === "BOOM_1000" ? "SELL" : "BUY";
     const symbol    = SYMBOL_MAP[activeAsset];
-    const msg       = `${direction} ${symbol} | TP 5 CANDLES`;
-    pushNotification("Trade Entry", msg);
+    pushNotification("Trade Entry", `${direction} ${symbol} | TP 5 CANDLES`);
 
-    // Send proposal then buy on response
-    // contractType: BOOM=PUT (sell spike), CRASH=CALL (buy spike)
-    const contractType = direction === "SELL" ? "PUT" : "CALL";
-    for (let i = 0; i < positionCount; i++) {
-      wsSend({
-        proposal: 1,
-        amount: lotSize,
-        basis: "stake",
-        contract_type: contractType,
-        currency: account.currency || "USD",
-        duration: 5,
-        duration_unit: "m",
-        symbol,
-        subscribe: 1,
-      });
+    // Only send buy if actually authenticated
+    if (tokenRef.current) {
+      const contractType = direction === "SELL" ? "PUT" : "CALL";
+      for (let i = 0; i < positionCount; i++) {
+        wsSend({
+          proposal: 1,
+          amount: lotSize,
+          basis: "stake",
+          contract_type: contractType,
+          currency: account.currency || "USD",
+          duration: 5,
+          duration_unit: "m",
+          symbol,
+        });
+      }
     }
 
     dispatch({
       type: "ADD_POSITION",
-      payload: {
-        id: Date.now(), asset: symbol, direction,
-        lotSize, positionCount, entryTime: new Date(), status: "open",
-      },
+      payload: { id: Date.now(), asset: symbol, direction, lotSize, positionCount, entryTime: new Date(), status: "open" },
     });
   }, [pushNotification, wsSend]);
 
   const executeExit = useCallback(() => {
-    // Sell all open positions
     stateRef.current.positions.forEach(pos => {
-      if (pos.contractId) {
-        wsSend({ sell: pos.contractId, price: 0 });
-      }
+      if (pos.contractId) wsSend({ sell: pos.contractId, price: 0 });
     });
     dispatch({ type: "SET_POSITIONS", payload: [] });
     dispatch({
       type: "ADD_HISTORY",
-      payload: {
-        id: Date.now(),
-        asset: stateRef.current.activeAsset,
-        pnl: stateRef.current.pnl,
-        date: new Date(),
-        candles: 5,
-      },
+      payload: { id: Date.now(), asset: stateRef.current.activeAsset, pnl: stateRef.current.pnl, date: new Date(), candles: 5 },
     });
     pushNotification("Trade Complete", "TRADE COMPLETE. NOX ❄️");
   }, [pushNotification, wsSend]);
 
-  // ── Auto trader candle logic ───────────────────────────────────
+  // ── Auto trader candle sequencing ──────────────────────────
   const onNewCandle = useCallback(() => {
     if (!stateRef.current.autoTraderActive) return;
     const buf   = candleBufferRef.current;
@@ -244,19 +218,17 @@ export function AppProvider({ children, navigate }) {
     if (!auto.triggered && aligned) {
       autoStateRef.current = { triggered: true, candlePhase: 1 };
       dispatch({ type: "SET_CANDLE", payload: { count: 1, phase: "confirming" } });
-      pushNotification("Signal Detected", `${asset} — waiting 3 candles`);
+      pushNotification("Signal", `${asset} aligned — waiting 3 candles`);
     } else if (auto.triggered && auto.candlePhase >= 1 && auto.candlePhase < 3) {
-      const next = auto.candlePhase + 1;
-      autoStateRef.current.candlePhase = next;
-      dispatch({ type: "SET_CANDLE", payload: { count: next, phase: "confirming" } });
+      autoStateRef.current.candlePhase++;
+      dispatch({ type: "SET_CANDLE", payload: { count: auto.candlePhase, phase: "confirming" } });
     } else if (auto.triggered && auto.candlePhase === 3) {
       autoStateRef.current.candlePhase = 4;
       dispatch({ type: "SET_CANDLE", payload: { count: 4, phase: "entry" } });
       executeEntry();
     } else if (auto.triggered && auto.candlePhase >= 4 && auto.candlePhase < 8) {
-      const next = auto.candlePhase + 1;
-      autoStateRef.current.candlePhase = next;
-      dispatch({ type: "SET_CANDLE", payload: { count: next - 3, phase: "holding" } });
+      autoStateRef.current.candlePhase++;
+      dispatch({ type: "SET_CANDLE", payload: { count: auto.candlePhase - 3, phase: "holding" } });
     } else if (auto.triggered && auto.candlePhase >= 8) {
       autoStateRef.current = { triggered: false, candlePhase: 0 };
       dispatch({ type: "SET_CANDLE", payload: { count: 0, phase: "waiting" } });
@@ -264,28 +236,42 @@ export function AppProvider({ children, navigate }) {
     }
   }, [executeEntry, executeExit, pushNotification]);
 
-  // ── WS message handler ────────────────────────────────────────
+  // ── WS message handler ─────────────────────────────────────
   const handleMessage = useCallback((evt) => {
     try {
       const data = JSON.parse(evt.data);
 
       if (data.error) {
-        console.error("Deriv WS error:", data.error.message);
-        dispatch({ type: "SET_CONNECT_ERROR", payload: data.error.message });
+        console.error("Deriv error:", data.error.code, data.error.message);
+        dispatch({ type: "SET_CONNECT_ERROR", payload: `${data.error.code}: ${data.error.message}` });
         return;
       }
 
       switch (data.msg_type) {
+        case "authorize":
+          dispatch({ type: "SET_ACCOUNT", payload: {
+            balance:  data.authorize.balance,
+            currency: data.authorize.currency,
+            username: data.authorize.loginid,
+          }});
+          dispatch({ type: "SET_ENVIRONMENT", payload: data.authorize.is_virtual ? "DEMO" : "LIVE" });
+          dispatch({ type: "CLEAR_CONNECT_ERROR" });
+          // Subscribe to balance updates then asset
+          wsSend({ balance: 1, subscribe: 1 });
+          subscribeToAsset(stateRef.current.activeAsset);
+          break;
 
         case "balance":
           dispatch({ type: "SET_ACCOUNT", payload: { balance: data.balance.balance, currency: data.balance.currency } });
           break;
 
         case "candles":
-          candleBufferRef.current = data.candles.map(c => ({
-            open: c.open, high: c.high, low: c.low, close: c.close, epoch: c.epoch,
-          }));
-          updateIndicators();
+          if (data.candles) {
+            candleBufferRef.current = data.candles.map(c => ({
+              open: c.open, high: c.high, low: c.low, close: c.close, epoch: c.epoch,
+            }));
+            updateIndicators();
+          }
           break;
 
         case "ohlc": {
@@ -309,23 +295,21 @@ export function AppProvider({ children, navigate }) {
           break;
 
         case "proposal":
-          // Proposal received — buy the contract
-          if (stateRef.current.autoTraderActive || stateRef.current.positions.length > 0) {
+          // Auto-buy when we get a proposal response and engine is active
+          if (stateRef.current.positions.length > 0 && stateRef.current.autoTraderActive) {
             wsSend({ buy: data.proposal.id, price: data.proposal.ask_price });
           }
           break;
 
         case "buy":
-          // Store contract ID on the position
           if (data.buy) {
             const positions = stateRef.current.positions;
             if (positions.length > 0) {
               const updated = [...positions];
-              const openIdx = updated.findIndex(p => !p.contractId);
-              if (openIdx >= 0) updated[openIdx] = { ...updated[openIdx], contractId: data.buy.contract_id };
+              const idx = updated.findIndex(p => !p.contractId);
+              if (idx >= 0) updated[idx] = { ...updated[idx], contractId: data.buy.contract_id };
               dispatch({ type: "SET_POSITIONS", payload: updated });
             }
-            // Subscribe to contract updates for P&L
             wsSend({ proposal_open_contract: 1, contract_id: data.buy.contract_id, subscribe: 1 });
           }
           break;
@@ -342,113 +326,59 @@ export function AppProvider({ children, navigate }) {
     } catch (e) {
       console.error("WS parse error:", e);
     }
-  }, [updateIndicators, onNewCandle, wsSend]);
+  }, [updateIndicators, onNewCandle, wsSend, subscribeToAsset]);
 
-  // ── Main connect function ─────────────────────────────────────
-  // New Deriv API flow:
-  // 1. PAT auth: POST /trading/v1/options/accounts/{accountId}/otp  → get wsUrl
-  // 2. Connect to wsUrl
-  // 3. Subscribe to balance + asset
-  const connectDeriv = useCallback(async (appId, token, accountId) => {
-    dispatch({ type: "SET_CONNECT_ERROR", payload: null });
+  // ── Main connect — PAT token via authorize message ─────────
+  const connectDeriv = useCallback((token) => {
+    dispatch({ type: "CLEAR_CONNECT_ERROR" });
+    tokenRef.current = token || "";
 
-    try {
-      // Step 1: Get authenticated WebSocket URL via OTP endpoint
-      const otpRes = await fetch(
-        `https://api.derivws.com/trading/v1/options/accounts/${accountId}/otp`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Deriv-App-ID": appId,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!otpRes.ok) {
-        const errData = await otpRes.json().catch(() => ({}));
-        throw new Error(errData?.message || `Auth failed: ${otpRes.status}`);
-      }
-
-      const otpData = await otpRes.json();
-      const wsUrl   = otpData?.data?.url;
-
-      if (!wsUrl) throw new Error("No WebSocket URL returned from OTP endpoint");
-
-      // Step 2: Connect to authenticated WebSocket URL
-      if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.close();
-      }
-
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        dispatch({ type: "SET_CONNECTED", payload: true });
-        dispatch({ type: "SET_CONNECT_ERROR", payload: null });
-        // Subscribe to balance
-        wsSend({ balance: 1, subscribe: 1 });
-        // Subscribe to asset data
-        subscribeToAsset(stateRef.current.activeAsset);
-        // Detect demo vs real from URL
-        const isDemo = wsUrl.includes("/demo");
-        dispatch({ type: "SET_ENVIRONMENT", payload: isDemo ? "DEMO" : "LIVE" });
-      };
-
-      ws.onmessage = handleMessage;
-
-      ws.onclose = () => {
-        dispatch({ type: "SET_CONNECTED", payload: false });
-        // Auto-reconnect after 5s
-        setTimeout(() => connectDeriv(appId, token, accountId), 5000);
-      };
-
-      ws.onerror = () => {
-        dispatch({ type: "SET_CONNECTED", payload: false });
-        dispatch({ type: "SET_CONNECT_ERROR", payload: "WebSocket connection error" });
-      };
-
-    } catch (err) {
-      dispatch({ type: "SET_CONNECTED", payload: false });
-      dispatch({ type: "SET_CONNECT_ERROR", payload: err.message });
-      console.error("connectDeriv error:", err);
-    }
-  }, [handleMessage, subscribeToAsset, wsSend]);
-
-  // ── Public feed (no auth — for market data only) ──────────────
-  const connectPublic = useCallback(() => {
     if (wsRef.current) {
       wsRef.current.onclose = null;
       wsRef.current.close();
     }
-    const ws = new WebSocket("wss://ws.binaryws.com/websockets/v3?app_id=1089");
+
+    const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
-    ws.onopen    = () => {
+
+    ws.onopen = () => {
       dispatch({ type: "SET_CONNECTED", payload: true });
-      subscribeToAsset(stateRef.current.activeAsset);
+      if (token) {
+        // Authenticate with PAT token
+        ws.send(JSON.stringify({ authorize: token }));
+      } else {
+        // No auth — public market data only
+        subscribeToAsset(stateRef.current.activeAsset);
+      }
     };
+
     ws.onmessage = handleMessage;
-    ws.onclose   = () => dispatch({ type: "SET_CONNECTED", payload: false });
+
+    ws.onclose = () => {
+      dispatch({ type: "SET_CONNECTED", payload: false });
+      setTimeout(() => connectDeriv(tokenRef.current), 5000);
+    };
+
+    ws.onerror = () => {
+      dispatch({ type: "SET_CONNECTED", payload: false });
+      dispatch({ type: "SET_CONNECT_ERROR", payload: "WebSocket connection failed" });
+    };
   }, [handleMessage, subscribeToAsset]);
 
+  // ── Public market data (no auth) ───────────────────────────
+  const connectPublic = useCallback(() => {
+    connectDeriv(null);
+  }, [connectDeriv]);
+
   return (
-    <AppContext.Provider
-      value={{
-        state,
-        dispatch,
-        connectDeriv,
-        connectPublic,
-        subscribeToAsset,
-        pushNotification,
-        requestNotificationPermission,
-        checkMarginSafety,
-        executeEntry,
-        executeExit,
-        navigate,
-      }}
-    >
+    <AppContext.Provider value={{
+      state, dispatch,
+      connectDeriv, connectPublic,
+      subscribeToAsset,
+      pushNotification, requestNotificationPermission,
+      checkMarginSafety, executeEntry, executeExit,
+      navigate,
+    }}>
       {children}
     </AppContext.Provider>
   );
