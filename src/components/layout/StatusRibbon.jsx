@@ -2,27 +2,24 @@ import { useApp } from "../../context/AppContext";
 
 export default function StatusRibbon() {
   const { state } = useApp();
-  const posCount = state.positions.length;
-  const pnl = state.pnl;
-  const balance = state.account.balance || 0;
-
+  const pnl = state.pnl || 0;
   return (
-    <div className="status-ribbon">
-      <div className="ribbon-item">
-        <span className="ribbon-val">{posCount}</span>
-        <span className="ribbon-label">POS</span>
+    <div className="ribbon">
+      <div className="rib-item">
+        <span className="rib-v">{state.positions?.length || 0}</span>
+        <span className="rib-l">POS</span>
       </div>
-      <div className="ribbon-divider" />
-      <div className="ribbon-item">
-        <span className={`ribbon-val ${pnl >= 0 ? "val-pos" : "val-neg"}`}>
+      <div className="rib-div" />
+      <div className="rib-item">
+        <span className={`rib-v ${pnl > 0 ? "pos" : pnl < 0 ? "neg" : ""}`}>
           {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
         </span>
-        <span className="ribbon-label">P&L</span>
+        <span className="rib-l">P&L</span>
       </div>
-      <div className="ribbon-divider" />
-      <div className="ribbon-item">
-        <span className="ribbon-val">${balance.toFixed(0)}</span>
-        <span className="ribbon-label">BAL</span>
+      <div className="rib-div" />
+      <div className="rib-item">
+        <span className="rib-v">${(state.account?.balance || 0).toFixed(0)}</span>
+        <span className="rib-l">BAL</span>
       </div>
     </div>
   );

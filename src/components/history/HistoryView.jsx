@@ -1,86 +1,159 @@
+import { useState } from "react";
 import { useApp } from "../../context/AppContext";
 
-// Mock history data for demo
-const mockHistory = [
-  { id: 1, asset: "BOOM_1000", direction: "SELL", pnl: 12.40, date: new Date(Date.now() - 86400000 * 0 + 3600000 * 2), candles: 5 },
-  { id: 2, asset: "CRASH_1000", direction: "BUY", pnl: -4.20, date: new Date(Date.now() - 86400000 * 0 + 3600000 * 5), candles: 5 },
-  { id: 3, asset: "BOOM_1000", direction: "SELL", pnl: 8.75, date: new Date(Date.now() - 86400000 * 1 + 3600000 * 1), candles: 5 },
-  { id: 4, asset: "CRASH_1000", direction: "BUY", pnl: 15.30, date: new Date(Date.now() - 86400000 * 1 + 3600000 * 6), candles: 5 },
-  { id: 5, asset: "BOOM_1000", direction: "SELL", pnl: -2.10, date: new Date(Date.now() - 86400000 * 2 + 3600000 * 3), candles: 5 },
-  { id: 6, asset: "CRASH_1000", direction: "BUY", pnl: 22.60, date: new Date(Date.now() - 86400000 * 2 + 3600000 * 7), candles: 5 },
-];
+const LOT_SIZES = [0.20, 0.50, 1, 10, 20, 50];
 
-function groupByDate(trades) {
-  const groups = {};
-  trades.forEach(t => {
-    const key = new Date(t.date).toDateString();
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(t);
-  });
-  return Object.entries(groups).map(([date, trades]) => ({
-    date,
-    trades,
-    total: trades.reduce((s, t) => s + t.pnl, 0),
-  }));
+// Calculate P&L for a given lot size based on price move
+// $1 per point per lot on BOOM/CRASH M1
+function calcPnL(entryPrice, exitPrice, direction, lotSize) {
+  if (!entryPrice || !exitPrice) return 0;
+  const move = direction === "BUY"
+    ? exitPrice - entryPrice   // CRASH: want price to go up
+    : entryPrice - exitPrice;  // BOOM: want price to go down
+  return parseFloat((move * lotSize).toFixed(2));
 }
 
-function weekTotal(trades) {
-  const weekAgo = Date.now() - 7 * 86400000;
-  return trades.filter(t => new Date(t.date).getTime() > weekAgo).reduce((s, t) => s + t.pnl, 0);
+function SignalCard({ record }) {
+  const [expanded, setExpanded] = useState(false);
+  const move = record.direction === "BUY"
+    ? record.exitPrice - record.entryPrice
+    : record.entryPrice - record.exitPrice;
+  const win = move > 0;
+
+  return (
+    <div className={`signal-card ${win ? "sig-win" : "sig-loss"}`} onClick={() => setExpanded(e => !e)}>
+      <div className="sc-top">
+        <div className="sc-left">
+          <span className={`sc-dir ${record.direction === "BUY" ? "buy" : "sell"}`}>
+            {record.direction === "BUY" ? "▲" : "▼"} {record.direction}
+          </span>
+          <span className="sc-asset">{record.asset.replace("_", " ")}</span>
+        </div>
+        <div className="sc-right">
+          <span className={`sc-result ${win ? "win" : "loss"}`}>{win ? "WIN" : "LOSS"}</span>
+          <span className="sc-time">
+            {new Date(record.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+      </div>
+
+      <div className="sc-prices">
+        <span>Entry {record.entryPrice?.toFixed(2) || "—"}</span>
+        <span className="sc-arrow">→</span>
+        <span>Exit {record.exitPrice?.toFixed(2) || "—"}</span>
+        <span className={`sc-move ${win ? "pos" : "neg"}`}>
+          {move > 0 ? "+" : ""}{move.toFixed(2)} pts
+        </span>
+      </div>
+
+      {expanded && (
+        <div className="sc-breakdown">
+          <div className="sb-title">P&L BY LOT SIZE</div>
+          <div className="sb-grid">
+            {LOT_SIZES.map(lot => {
+              const pnl = calcPnL(record.entryPrice, record.exitPrice, record.direction, lot);
+              return (
+                <div key={lot} className="sb-row">
+                  <span className="sb-lot">{lot.toFixed(2)}</span>
+                  <span className={`sb-pnl ${pnl >= 0 ? "pos" : "neg"}`}>
+                    {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="sc-chevron">{expanded ? "▲" : "▼"}</div>
+    </div>
+  );
+}
+
+// Mock data for demo
+const mockSignals = [
+  { id: 1, asset: "BOOM_1000",  direction: "SELL", entryPrice: 13420.50, exitPrice: 13395.20, date: new Date(Date.now() - 3600e3*1) },
+  { id: 2, asset: "CRASH_1000", direction: "BUY",  entryPrice: 5672.30,  exitPrice: 5698.80,  date: new Date(Date.now() - 3600e3*2) },
+  { id: 3, asset: "BOOM_1000",  direction: "SELL", entryPrice: 13380.00, exitPrice: 13392.50, date: new Date(Date.now() - 3600e3*4) },
+  { id: 4, asset: "CRASH_1000", direction: "BUY",  entryPrice: 5640.10,  exitPrice: 5628.90,  date: new Date(Date.now() - 86400e3 + 3600e3*1) },
+  { id: 5, asset: "BOOM_1000",  direction: "SELL", entryPrice: 13310.00, exitPrice: 13275.40, date: new Date(Date.now() - 86400e3 + 3600e3*3) },
+  { id: 6, asset: "CRASH_1000", direction: "BUY",  entryPrice: 5590.20,  exitPrice: 5621.70,  date: new Date(Date.now() - 86400e3*2 + 3600e3*2) },
+];
+
+function groupByDate(records) {
+  const g = {};
+  records.forEach(r => {
+    const k = new Date(r.date).toDateString();
+    if (!g[k]) g[k] = [];
+    g[k].push(r);
+  });
+  return Object.entries(g);
 }
 
 export default function HistoryView() {
   const { state } = useApp();
-  const allTrades = [...state.history, ...mockHistory];
-  const groups = groupByDate(allTrades);
-  const wTotal = weekTotal(allTrades);
+  const all = [...state.history, ...mockSignals];
+  const groups = groupByDate(all);
+
+  const totalWins   = all.filter(r => (r.direction === "BUY" ? r.exitPrice - r.entryPrice : r.entryPrice - r.exitPrice) > 0).length;
+  const totalLosses = all.length - totalWins;
+  const weekPnL     = all
+    .filter(r => new Date(r.date) > new Date(Date.now() - 7*86400e3))
+    .reduce((s, r) => {
+      const move = r.direction === "BUY" ? r.exitPrice - r.entryPrice : r.entryPrice - r.exitPrice;
+      return s + move * 1; // 1 lot reference
+    }, 0);
 
   return (
     <div className="subview-container">
       <div className="subview-header">
         <span className="subview-icon">◎</span>
-        <h2 className="subview-title">History</h2>
+        <h2 className="subview-title">Signal History</h2>
       </div>
 
-      <div className="week-total-card">
-        <span className="week-label">THIS WEEK</span>
-        <span className={`week-val ${wTotal >= 0 ? "val-pos" : "val-neg"}`}>
-          {wTotal >= 0 ? "+" : ""}${wTotal.toFixed(2)}
-        </span>
+      {/* Summary stats */}
+      <div className="hist-stats">
+        <div className="hstat">
+          <span className="hstat-v pos">{totalWins}</span>
+          <span className="hstat-l">WINS</span>
+        </div>
+        <div className="hstat-div" />
+        <div className="hstat">
+          <span className="hstat-v neg">{totalLosses}</span>
+          <span className="hstat-l">LOSSES</span>
+        </div>
+        <div className="hstat-div" />
+        <div className="hstat">
+          <span className={`hstat-v ${totalWins + totalLosses > 0 ? (totalWins/(totalWins+totalLosses)*100 >= 50 ? "pos" : "neg") : ""}`}>
+            {totalWins + totalLosses > 0 ? Math.round(totalWins/(totalWins+totalLosses)*100) : 0}%
+          </span>
+          <span className="hstat-l">WIN RATE</span>
+        </div>
+        <div className="hstat-div" />
+        <div className="hstat">
+          <span className={`hstat-v ${weekPnL >= 0 ? "pos" : "neg"}`}>
+            {weekPnL >= 0 ? "+" : ""}{weekPnL.toFixed(1)}
+          </span>
+          <span className="hstat-l">7D PTS</span>
+        </div>
       </div>
 
-      <div className="history-timeline">
-        {groups.map(group => (
-          <div key={group.date} className="history-day">
-            <div className="day-header">
-              <span className="day-date">{group.date}</span>
-              <span className={`day-total ${group.total >= 0 ? "val-pos" : "val-neg"}`}>
-                {group.total >= 0 ? "+" : ""}${group.total.toFixed(2)}
-              </span>
-            </div>
-            <div className="day-trades">
-              {group.trades.map(trade => (
-                <div key={trade.id} className="trade-row">
-                  <div className="trade-left">
-                    <span className={`trade-dir ${trade.direction === "BUY" ? "dir-buy" : "dir-sell"}`}>
-                      {trade.direction === "BUY" ? "▲" : "▼"} {trade.direction}
-                    </span>
-                    <span className="trade-asset">{trade.asset?.replace("_", " ")}</span>
-                  </div>
-                  <div className="trade-right">
-                    <span className={`trade-pnl ${trade.pnl >= 0 ? "val-pos" : "val-neg"}`}>
-                      {trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)}
-                    </span>
-                    <span className="trade-time">
-                      {new Date(trade.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+      <div className="hist-note">Tap a card to see P&L by lot size · 5-candle signals</div>
+
+      {/* Timeline */}
+      {groups.map(([date, records]) => (
+        <div key={date}>
+          <div className="hist-date-header">
+            <span className="hist-date">{date}</span>
+            <span className="hist-count">{records.length} signals</span>
           </div>
-        ))}
-      </div>
+          {records.map(r => <SignalCard key={r.id} record={r} />)}
+        </div>
+      ))}
+
+      {all.length === 0 && (
+        <div className="hist-empty">No signals recorded yet. Start the app to begin tracking.</div>
+      )}
     </div>
   );
 }

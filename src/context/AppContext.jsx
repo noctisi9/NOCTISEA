@@ -71,7 +71,7 @@ export function AppProvider({ children, navigate }) {
 
   const wsRef           = useRef(null);
   const candleBufferRef = useRef([]);
-  const autoStateRef    = useRef({ triggered: false, candlePhase: 0 });
+  const autoStateRef    = useRef({ triggered: false, candlePhase: 0, entryPrice: 0, asset: "", direction: "" });
   const stateRef        = useRef(state);
   const credRef         = useRef({ appId: "", token: "", accountId: "" });
   stateRef.current      = state;
@@ -163,13 +163,16 @@ export function AppProvider({ children, navigate }) {
     for (let i = 0; i < positionCount; i++) {
       wsSend({ proposal: 1, amount: lotSize, basis: "stake", contract_type: contractType, currency: account.currency || "USD", duration: 5, duration_unit: "m", symbol });
     }
+    autoStateRef.current.entryPrice = stateRef.current.currentPrice;
+    autoStateRef.current.asset = activeAsset;
+    autoStateRef.current.direction = direction;
     dispatch({ type: "ADD_POSITION", payload: { id: Date.now(), asset: symbol, direction, lotSize, positionCount, entryTime: new Date(), status: "open" } });
   }, [pushNotification, wsSend]);
 
   const executeExit = useCallback(() => {
     stateRef.current.positions.forEach(pos => { if (pos.contractId) wsSend({ sell: pos.contractId, price: 0 }); });
     dispatch({ type: "SET_POSITIONS", payload: [] });
-    dispatch({ type: "ADD_HISTORY", payload: { id: Date.now(), asset: stateRef.current.activeAsset, pnl: stateRef.current.pnl, date: new Date(), candles: 5 } });
+    dispatch({ type: "ADD_HISTORY", payload: { id: Date.now(), asset: autoStateRef.current.asset || stateRef.current.activeAsset, direction: autoStateRef.current.direction, entryPrice: autoStateRef.current.entryPrice, exitPrice: stateRef.current.currentPrice, date: new Date(), candles: 5 } });
     pushNotification("Trade Complete", "TRADE COMPLETE. NOX ❄️");
   }, [pushNotification, wsSend]);
 
@@ -186,7 +189,7 @@ export function AppProvider({ children, navigate }) {
     if (!auto.triggered && aligned) {
       autoStateRef.current = { triggered: true, candlePhase: 1 };
       dispatch({ type: "SET_CANDLE", payload: { count: 1, phase: "confirming" } });
-      pushNotification("Signal", `${asset} aligned — waiting 3 candles`);
+      pushNotification("🔔 NOCTIS SIGNAL", `${asset === "BOOM_1000" ? "▼ SELL BOOM 1000" : "▲ BUY CRASH 1000"} — Signal detected! Waiting 3 candles for entry.`);
     } else if (auto.triggered && auto.candlePhase >= 1 && auto.candlePhase < 3) {
       autoStateRef.current.candlePhase++;
       dispatch({ type: "SET_CANDLE", payload: { count: auto.candlePhase, phase: "confirming" } });

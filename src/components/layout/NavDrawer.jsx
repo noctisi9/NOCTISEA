@@ -1,54 +1,37 @@
 import { useApp } from "../../context/AppContext";
 
-const navLinks = [
+const links = [
   { label: "Account", icon: "◈", view: "account", path: "/dashboard/account" },
-  { label: "WhatsApp", icon: "◉", view: "whatsapp", path: "/dashboard/whatsapp" },
-  { label: "Settings", icon: "◎", view: "history", path: "/dashboard/settings" },
+  { label: "History", icon: "◎", view: "history", path: "/dashboard/history" },
 ];
 
 export default function NavDrawer({ navigate }) {
   const { state, dispatch } = useApp();
-
-  const handleNav = (link) => {
+  const go = (link) => {
     dispatch({ type: "SET_VIEW", payload: link.view });
     dispatch({ type: "CLOSE_DRAWER" });
     navigate(link.path);
   };
-
   return (
     <nav className={`nav-drawer ${state.drawerOpen ? "drawer-open" : ""}`}>
       <div className="drawer-header">
-        <div className="drawer-logo">
-          <div className="drawer-logo-icon">⬡</div>
-          <div>
-            <div className="drawer-brand">NOCTIS EA</div>
-            <div className="drawer-subbrand">ITRADE XXIV</div>
-          </div>
-        </div>
+        <div className="drawer-brand">NOCTIS</div>
+        <div className="drawer-sub">ITRADE XXIV</div>
       </div>
-      <div className="drawer-divider" />
       <ul className="drawer-links">
-        {navLinks.map((link) => (
-          <li key={link.view}>
-            <button
-              className={`drawer-link ${state.currentView === link.view ? "drawer-link-active" : ""}`}
-              onClick={() => handleNav(link)}
-            >
-              <span className="drawer-icon">{link.icon}</span>
-              <span>{link.label}</span>
-              <span className="drawer-chevron">›</span>
+        {links.map(l => (
+          <li key={l.view}>
+            <button className={`drawer-link ${state.currentView === l.view ? "active" : ""}`} onClick={() => go(l)}>
+              <span className="drawer-icon">{l.icon}</span>
+              <span>{l.label}</span>
+              <span className="drawer-chev">›</span>
             </button>
           </li>
         ))}
       </ul>
       <div className="drawer-footer">
-        <div className="drawer-status">
-          <span className={`conn-dot ${state.connected ? "dot-live" : "dot-off"}`} />
-          <span className="drawer-status-text">
-            {state.connected ? `Connected · ${state.environment}` : "Disconnected"}
-          </span>
-        </div>
-        <div className="drawer-version">NOCTIS EA v2.4.1</div>
+        <div style={{marginBottom:"4px"}}><span className={`dot ${state.connected?"dot-live":"dot-off"}`} style={{display:"inline-block",marginRight:"6px"}} />{state.connected ? `LIVE · ${state.environment}` : "OFFLINE"}</div>
+        NOCTIS v3.0.0
       </div>
     </nav>
   );
