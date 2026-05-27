@@ -11,31 +11,35 @@ const ASSETS = [
 
 export default function TradingView() {
   const { state, dispatch, subscribeToAsset } = useApp();
-  const [aoHist, setAoHist] = useState(Array(60).fill(0));
-  const [acHist, setAcHist] = useState(Array(60).fill(0));
-  const prevPrice = useRef(state.currentPrice);
+  const [aoHist, setAoHist] = useState(Array(80).fill(0));
+  const [acHist, setAcHist] = useState(Array(80).fill(0));
+  const prevPrice = useRef(0);
+  const [priceDir, setPriceDir] = useState("flat");
 
   useEffect(() => {
     setAoHist(p => [...p.slice(1), state.signals.ao || 0]);
     setAcHist(p => [...p.slice(1), state.signals.ac || 0]);
   }, [state.signals.ao, state.signals.ac]);
 
-  const priceDir = state.currentPrice > prevPrice.current ? "up"
-    : state.currentPrice < prevPrice.current ? "down" : "flat";
-  useEffect(() => { prevPrice.current = state.currentPrice; }, [state.currentPrice]);
+  useEffect(() => {
+    if (state.currentPrice > prevPrice.current) setPriceDir("up");
+    else if (state.currentPrice < prevPrice.current) setPriceDir("down");
+    prevPrice.current = state.currentPrice;
+  }, [state.currentPrice]);
 
   const handleAsset = (key) => {
     dispatch({ type: "SET_ASSET", payload: key });
     subscribeToAsset(key);
   };
 
-  const ao = state.signals.ao || 0;
-  const ac = state.signals.ac || 0;
+  const ao  = state.signals.ao || 0;
+  const ac  = state.signals.ac || 0;
   const dir = state.signals.direction;
 
   return (
     <div className="trading-view">
-      {/* Asset bar + price */}
+
+      {/* Asset selector + live price */}
       <div className="asset-bar">
         {ASSETS.map(a => (
           <button key={a.key}
@@ -48,18 +52,18 @@ export default function TradingView() {
           <div className={`price-val ${priceDir}`}>
             {state.currentPrice ? state.currentPrice.toFixed(2) : "—"}
           </div>
-          <div className="price-chg">{state.activeAsset.replace("_"," ")}</div>
+          <div className="price-chg">{state.activeAsset.replace("_", " ")}</div>
         </div>
       </div>
 
-      {/* M1 Candlestick chart */}
+      {/* Candlestick chart */}
       <CandleChart
         candles={state.candles}
         currentPrice={state.currentPrice}
         asset={state.activeAsset}
       />
 
-      {/* AC oscillator — label hidden, value shown */}
+      {/* AC oscillator — label top-left, no name shown */}
       <div className="osc-block">
         <div className={`osc-val ${ac >= 0 ? "pos" : "neg"}`}>
           {ac >= 0 ? "+" : ""}{ac.toFixed(4)}
@@ -67,7 +71,7 @@ export default function TradingView() {
         <OscillatorChart values={acHist} type="ac" />
       </div>
 
-      {/* AO oscillator — label hidden, value shown */}
+      {/* AO oscillator — label top-left, no name shown */}
       <div className="osc-block">
         <div className={`osc-val ${ao >= 0 ? "pos" : "neg"}`}>
           {ao >= 0 ? "+" : ""}{ao.toFixed(4)}
@@ -75,12 +79,11 @@ export default function TradingView() {
         <OscillatorChart values={aoHist} type="ao" />
       </div>
 
-      {/* Signal strip */}
+      {/* Signal strip — word only, no AO/AC text */}
       <div className="signal-strip">
         <div className={`signal-box ${dir === "BUY" ? "buy" : dir === "SELL" ? "sell" : "neutral"}`}>
           <span className="sig-arrow">{dir === "BUY" ? "▲" : dir === "SELL" ? "▼" : "◈"}</span>
           <span className="sig-word">{dir || "SCANNING"}</span>
-          <span className="sig-vals">AO {ao >= 0 ? "+" : ""}{ao.toFixed(4)} | AC {ac >= 0 ? "+" : ""}{ac.toFixed(4)}</span>
         </div>
       </div>
 

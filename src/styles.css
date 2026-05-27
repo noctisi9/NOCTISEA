@@ -238,3 +238,23 @@ input[type=number] { -moz-appearance: textfield; }
 .sb-row { background: rgba(255,255,255,.03); border: 1px solid var(--bdr); border-radius: 3px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .sb-lot { font-family: var(--font-m); font-size: 11px; color: var(--text-s); }
 .sb-pnl { font-family: var(--font-m); font-size: 14px; font-weight: 700; }
+
+/* ── TIMER ALERT ── */
+.timer-alert {
+  color: var(--red) !important;
+  animation: timer-pulse 0.5s ease-in-out infinite;
+  text-shadow: 0 0 10px rgba(255,59,92,0.8);
+}
+@keyframes timer-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── SIGNAL STRIP — word only ── */
+.sig-word {
+  font-family: var(--font-d);
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.25em;
+}
+.sig-arrow { font-size: 24px; line-height: 1; }

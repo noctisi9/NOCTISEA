@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+// type: "ac" = blue bars, "ao" = yellow bars (matching reference image 2)
 export default function OscillatorChart({ values = [], type = "ao" }) {
   const canvasRef = useRef(null);
 
@@ -17,12 +18,12 @@ export default function OscillatorChart({ values = [], type = "ao" }) {
     ctx.fillStyle = "#0A0D12";
     ctx.fillRect(0, 0, W, H);
 
-    const max = Math.max(...values.map(Math.abs), 0.0001);
-    const mid = H / 2;
+    const max  = Math.max(...values.map(Math.abs), 0.0001);
+    const mid  = H / 2;
     const barW = Math.max(2, W / values.length - 0.5);
 
     // Zero line
-    ctx.strokeStyle = "rgba(0,229,255,0.15)";
+    ctx.strokeStyle = "rgba(0,229,255,0.12)";
     ctx.lineWidth   = 1;
     ctx.setLineDash([3, 5]);
     ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(W, mid); ctx.stroke();
@@ -30,17 +31,23 @@ export default function OscillatorChart({ values = [], type = "ao" }) {
 
     values.forEach((v, i) => {
       const x    = i * (barW + 0.5);
-      const bh   = (Math.abs(v) / max) * (mid - 3);
+      const bh   = Math.max(1, (Math.abs(v) / max) * (mid - 3));
       const prev = i > 0 ? values[i - 1] : v;
       const isPos = v >= 0;
-      // Blue = increasing, Yellow = decreasing (matching reference image)
+
+      // AC = blue increasing / yellow decreasing
+      // AO = yellow increasing / blue decreasing
       let color;
-      if (isPos) color = v >= prev ? "#2979FF" : "#FFD600";
-      else       color = v <= prev ? "#2979FF" : "#FFD600";
+      if (type === "ac") {
+        color = v >= prev ? "#2979FF" : "#FFD600";
+      } else {
+        color = v >= prev ? "#FFD600" : "#2979FF";
+      }
+
       ctx.fillStyle = color;
-      ctx.fillRect(x, isPos ? mid - bh : mid, barW, Math.max(bh, 1));
+      ctx.fillRect(x, isPos ? mid - bh : mid, barW, bh);
     });
-  }, [values]);
+  }, [values, type]);
 
   return <canvas ref={canvasRef} className="osc-canvas" />;
 }
