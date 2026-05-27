@@ -106,9 +106,9 @@ html, body, #root { height: 100%; width: 100%; overflow: hidden; background: var
 .candle-canvas { display: block; width: 100%; height: 220px; cursor: crosshair; }
 
 /* ── OSCILLATORS ── */
-.osc-block { background: var(--bg); border-bottom: 1px solid var(--bdr); position: relative; }
-.osc-val { position: absolute; top: 6px; right: 10px; font-family: var(--font-m); font-size: 11px; letter-spacing: .06em; z-index: 5; }
-.osc-canvas { display: block; width: 100%; height: 80px; }
+.osc-block { background: var(--bg); border-bottom: 1px solid var(--bdr); position: relative; width: 100%; overflow: hidden; }
+.osc-val { position: absolute; top: 6px; left: 10px; font-family: var(--font-m); font-size: 11px; letter-spacing: .06em; z-index: 5; }
+.osc-canvas { display: block; width: 100% !important; height: 110px; }
 
 /* ── SIGNAL BADGE ── */
 .signal-strip { padding: 0 12px 10px; }
