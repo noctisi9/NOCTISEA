@@ -140,11 +140,13 @@ export function AppProvider({ children, navigate }) {
   }, []);
 
   // ── Subscribe to asset ─────────────────────────────────────
-  const subscribeToAsset = useCallback((asset) => {
+  const GRANULARITY_MAP = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
+  const subscribeToAsset = useCallback((asset, tf = "M1") => {
     const symbol = SYMBOL_MAP[asset] || "BOOM1000";
     wsSend({ forget_all: "candles" });
     wsSend({ forget_all: "ticks" });
-    wsSend({ ticks_history: symbol, count: 200, end: "latest", style: "candles", granularity: 60, subscribe: 1 });
+    const gran = GRANULARITY_MAP[tf] || 60;
+    wsSend({ ticks_history: symbol, count: 200, end: "latest", style: "candles", granularity: gran, subscribe: 1 });
     wsSend({ ticks: symbol, subscribe: 1 });
   }, [wsSend]);
 

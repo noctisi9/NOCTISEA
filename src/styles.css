@@ -258,3 +258,59 @@ input[type=number] { -moz-appearance: textfield; }
   letter-spacing: 0.25em;
 }
 .sig-arrow { font-size: 24px; line-height: 1; }
+
+/* ── TIMEFRAME BAR ── */
+.tf-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  background: var(--bg-s);
+  border-bottom: 1px solid var(--bdr);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tf-bar::-webkit-scrollbar { display: none; }
+.tf-btn {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--bdr);
+  border-radius: 3px;
+  color: var(--text-s);
+  font-family: var(--font-m);
+  font-size: 11px;
+  letter-spacing: .08em;
+  cursor: pointer;
+  transition: all .15s;
+}
+.tf-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+.tf-active {
+  color: var(--cyan) !important;
+  border-color: var(--cyan) !important;
+  background: var(--cyan-dim) !important;
+}
+
+/* ── OSC HEADER with name + value ── */
+.osc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px 2px;
+}
+.osc-name {
+  font-family: var(--font-m);
+  font-size: 11px;
+  color: var(--text-s);
+  letter-spacing: .1em;
+}
+.osc-val {
+  font-family: var(--font-m);
+  font-size: 11px;
+  letter-spacing: .06em;
+}
+.osc-canvas {
+  display: block;
+  width: 100% !important;
+  height: 100px;
+}

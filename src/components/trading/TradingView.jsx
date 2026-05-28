@@ -9,11 +9,22 @@ const ASSETS = [
   { key: "CRASH_1000", label: "CRASH 1000" },
 ];
 
+const TIMEFRAMES = [
+  { key: "M1",  label: "M1",  granularity: 60 },
+  { key: "M5",  label: "M5",  granularity: 300 },
+  { key: "M15", label: "M15", granularity: 900 },
+  { key: "M30", label: "M30", granularity: 1800 },
+  { key: "H1",  label: "H1",  granularity: 3600 },
+  { key: "H4",  label: "H4",  granularity: 14400 },
+  { key: "D1",  label: "D1",  granularity: 86400 },
+];
+
 export default function TradingView() {
   const { state, dispatch, subscribeToAsset } = useApp();
-  const [aoHist, setAoHist] = useState(Array(80).fill(0));
-  const [acHist, setAcHist] = useState(Array(80).fill(0));
-  const prevPrice = useRef(0);
+  const [aoHist, setAoHist] = useState(Array(100).fill(0));
+  const [acHist, setAcHist] = useState(Array(100).fill(0));
+  const [tf, setTf]         = useState("M1");
+  const prevPrice           = useRef(0);
   const [priceDir, setPriceDir] = useState("flat");
 
   useEffect(() => {
@@ -29,7 +40,12 @@ export default function TradingView() {
 
   const handleAsset = (key) => {
     dispatch({ type: "SET_ASSET", payload: key });
-    subscribeToAsset(key);
+    subscribeToAsset(key, tf);
+  };
+
+  const handleTf = (t) => {
+    setTf(t.key);
+    subscribeToAsset(state.activeAsset, t.key);
   };
 
   const ao  = state.signals.ao || 0;
@@ -56,30 +72,48 @@ export default function TradingView() {
         </div>
       </div>
 
+      {/* Timeframe bar */}
+      <div className="tf-bar">
+        {TIMEFRAMES.map(t => (
+          <button key={t.key}
+            className={`tf-btn ${tf === t.key ? "tf-active" : ""}`}
+            onClick={() => handleTf(t)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* Candlestick chart */}
       <CandleChart
         candles={state.candles}
         currentPrice={state.currentPrice}
         asset={state.activeAsset}
+        timeframe={tf}
       />
 
-      {/* AC oscillator — label top-left, no name shown */}
+      {/* AC oscillator */}
       <div className="osc-block">
-        <div className={`osc-val ${ac >= 0 ? "pos" : "neg"}`}>
-          {ac >= 0 ? "+" : ""}{ac.toFixed(4)}
+        <div className="osc-header">
+          <span className="osc-name">AC</span>
+          <span className={`osc-val ${ac >= 0 ? "pos" : "neg"}`}>
+            {ac >= 0 ? "+" : ""}{ac.toFixed(4)}
+          </span>
         </div>
         <OscillatorChart values={acHist} type="ac" />
       </div>
 
-      {/* AO oscillator — label top-left, no name shown */}
+      {/* AO oscillator */}
       <div className="osc-block">
-        <div className={`osc-val ${ao >= 0 ? "pos" : "neg"}`}>
-          {ao >= 0 ? "+" : ""}{ao.toFixed(4)}
+        <div className="osc-header">
+          <span className="osc-name">AO</span>
+          <span className={`osc-val ${ao >= 0 ? "pos" : "neg"}`}>
+            {ao >= 0 ? "+" : ""}{ao.toFixed(4)}
+          </span>
         </div>
         <OscillatorChart values={aoHist} type="ao" />
       </div>
 
-      {/* Signal strip — word only, no AO/AC text */}
+      {/* Signal strip — word only */}
       <div className="signal-strip">
         <div className={`signal-box ${dir === "BUY" ? "buy" : dir === "SELL" ? "sell" : "neutral"}`}>
           <span className="sig-arrow">{dir === "BUY" ? "▲" : dir === "SELL" ? "▼" : "◈"}</span>
