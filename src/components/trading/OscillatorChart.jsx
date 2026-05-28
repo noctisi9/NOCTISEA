@@ -1,61 +1,88 @@
 import { useEffect, useRef } from "react";
 
+/**
+ * Renders oscillator exactly like MT5:
+ * - Each candle = two side-by-side thin bars (current value + previous value)
+ * - Gold = current bar, Dark = previous bar (comparison pair)
+ * - Both positive and negative, zero line centered
+ * - Bars naturally sized and left-aligned as data accumulates
+ */
 export default function OscillatorChart({ values = [], type = "ao" }) {
   const canvasRef = useRef(null);
 
   const draw = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !values.length) return;
+    if (!canvas || values.length < 2) return;
+
     const ctx = canvas.getContext("2d");
     const DPR = window.devicePixelRatio || 1;
-    const W   = canvas.offsetWidth;
-    const H   = canvas.offsetHeight;
+    const W   = canvas.parentElement?.clientWidth || window.innerWidth;
+    const H   = canvas.clientHeight || 110;
+
     canvas.width  = W * DPR;
     canvas.height = H * DPR;
+    canvas.style.width  = W + "px";
+    canvas.style.height = H + "px";
     ctx.scale(DPR, DPR);
 
     // Background
     ctx.fillStyle = "#0A0D12";
     ctx.fillRect(0, 0, W, H);
 
-    const mid = H / 2;
-    const max = Math.max(...values.map(Math.abs), 0.0001);
+    const mid  = H / 2;
+    const max  = Math.max(...values.map(Math.abs), 0.0001);
+
+    // MT5 uses paired bars — current + previous side by side
+    // Each "group" = 2 thin bars
+    const pairW   = Math.max(3, W / values.length);
+    const thinBar = Math.max(1, pairW * 0.45);
 
     // Zero line
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.lineWidth   = 1;
     ctx.setLineDash([4, 6]);
-    ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(W, mid); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, mid);
+    ctx.lineTo(W, mid);
+    ctx.stroke();
     ctx.setLineDash([]);
 
-    // Only draw as many bars as we have values
-    // Bar width is fixed — thin like reference, centered in canvas
-    const BAR_W   = 3;
-    const BAR_GAP = 1;
-    const STEP    = BAR_W + BAR_GAP;
-    const totalW  = values.length * STEP;
-
-    // Center the bars horizontally
-    const startX  = (W - totalW) / 2;
-
     values.forEach((v, i) => {
-      const x    = startX + i * STEP;
-      const prev = i > 0 ? values[i - 1] : v;
-      const bh   = Math.max(1, (Math.abs(v) / max) * (mid - 6));
-      const isPos = v >= 0;
+      if (i === 0) return;
+      const prev  = values[i - 1];
+      const x     = i * pairW;
 
-      // Gold when momentum increasing, dark when decreasing
-      // AC: blue rising / gold falling
-      // AO: gold rising / blue falling  
-      let color;
-      if (type === "ac") {
-        color = v >= prev ? "#2979FF" : "#FFD600";
-      } else {
-        color = v >= prev ? "#FFD600" : "#2979FF";
-      }
+      // Current bar height
+      const curH  = Math.max(1, (Math.abs(v) / max) * (mid - 4));
+      // Previous bar height
+      const prvH  = Math.max(1, (Math.abs(prev) / max) * (mid - 4));
 
-      ctx.fillStyle = color;
-      ctx.fillRect(x, isPos ? mid - bh : mid, BAR_W, bh);
+      const curIsPos = v >= 0;
+      const prvIsPos = prev >= 0;
+
+      // MT5 color logic:
+      // Gold = current value bar
+      // Dark charcoal = previous value bar (the "shadow" comparison)
+      const goldColor = "#D4AF37";
+      const darkColor = "#3A3A3A";
+
+      // Draw previous bar (dark) — left of pair
+      ctx.fillStyle = darkColor;
+      ctx.fillRect(
+        x - thinBar,
+        prvIsPos ? mid - prvH : mid,
+        thinBar,
+        prvH
+      );
+
+      // Draw current bar (gold) — right of pair
+      ctx.fillStyle = goldColor;
+      ctx.fillRect(
+        x,
+        curIsPos ? mid - curH : mid,
+        thinBar,
+        curH
+      );
     });
   };
 
@@ -66,9 +93,8 @@ export default function OscillatorChart({ values = [], type = "ao" }) {
   }, [values, type]);
 
   useEffect(() => {
-    const ro = new ResizeObserver(() => draw());
-    if (canvasRef.current) ro.observe(canvasRef.current.parentElement);
-    return () => ro.disconnect();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
   }, [values]);
 
   return <canvas ref={canvasRef} className="osc-canvas" />;
