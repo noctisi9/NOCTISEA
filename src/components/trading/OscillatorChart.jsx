@@ -6,43 +6,47 @@ export default function OscillatorChart({ values = [], type = "ao" }) {
   const draw = () => {
     const canvas = canvasRef.current;
     if (!canvas || !values.length) return;
-    const ctx  = canvas.getContext("2d");
-    const DPR  = window.devicePixelRatio || 1;
-
-    // Force full parent width
-    const parent = canvas.parentElement;
-    const W = parent ? parent.clientWidth : window.innerWidth;
-    const H = canvas.clientHeight || 110;
-
+    const ctx = canvas.getContext("2d");
+    const DPR = window.devicePixelRatio || 1;
+    const W   = canvas.offsetWidth;
+    const H   = canvas.offsetHeight;
     canvas.width  = W * DPR;
     canvas.height = H * DPR;
-    canvas.style.width  = W + "px";
-    canvas.style.height = H + "px";
     ctx.scale(DPR, DPR);
 
     // Background
     ctx.fillStyle = "#0A0D12";
     ctx.fillRect(0, 0, W, H);
 
-    const max  = Math.max(...values.map(Math.abs), 0.0001);
-    const mid  = H / 2;
-    const barW = Math.max(2, (W / values.length) - 0.5);
+    const mid = H / 2;
+    const max = Math.max(...values.map(Math.abs), 0.0001);
 
     // Zero line
-    ctx.strokeStyle = "rgba(0,229,255,0.12)";
-    ctx.lineWidth   = 1;
-    ctx.setLineDash([3, 5]);
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
     ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(W, mid); ctx.stroke();
     ctx.setLineDash([]);
 
+    // Only draw as many bars as we have values
+    // Bar width is fixed — thin like reference, centered in canvas
+    const BAR_W   = 3;
+    const BAR_GAP = 1;
+    const STEP    = BAR_W + BAR_GAP;
+    const totalW  = values.length * STEP;
+
+    // Center the bars horizontally
+    const startX  = (W - totalW) / 2;
+
     values.forEach((v, i) => {
-      const x    = i * (barW + 0.5);
-      const bh   = Math.max(1, (Math.abs(v) / max) * (mid - 3));
+      const x    = startX + i * STEP;
       const prev = i > 0 ? values[i - 1] : v;
+      const bh   = Math.max(1, (Math.abs(v) / max) * (mid - 6));
       const isPos = v >= 0;
 
-      // AC = blue when rising, yellow when falling
-      // AO = yellow when rising, blue when falling
+      // Gold when momentum increasing, dark when decreasing
+      // AC: blue rising / gold falling
+      // AO: gold rising / blue falling  
       let color;
       if (type === "ac") {
         color = v >= prev ? "#2979FF" : "#FFD600";
@@ -51,21 +55,20 @@ export default function OscillatorChart({ values = [], type = "ao" }) {
       }
 
       ctx.fillStyle = color;
-      ctx.fillRect(x, isPos ? mid - bh : mid, barW, bh);
+      ctx.fillRect(x, isPos ? mid - bh : mid, BAR_W, bh);
     });
   };
 
   useEffect(() => {
-    // Draw immediately and again after a short delay to catch layout
     draw();
-    const t = setTimeout(draw, 100);
+    const t = setTimeout(draw, 80);
     return () => clearTimeout(t);
   }, [values, type]);
 
-  // Redraw on window resize
   useEffect(() => {
-    window.addEventListener("resize", draw);
-    return () => window.removeEventListener("resize", draw);
+    const ro = new ResizeObserver(() => draw());
+    if (canvasRef.current) ro.observe(canvasRef.current.parentElement);
+    return () => ro.disconnect();
   }, [values]);
 
   return <canvas ref={canvasRef} className="osc-canvas" />;
