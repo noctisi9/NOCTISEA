@@ -1,5 +1,4 @@
 import { useApp } from "../../context/AppContext";
-
 export default function MarginErrorBanner() {
   const { state, dispatch } = useApp();
   if (!state.marginError) return null;
