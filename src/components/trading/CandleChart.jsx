@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
-export default function CandleChart({ candles = [], currentPrice = 0, asset = "", timeframe = "M1", fullHeight = false }) {
+export default function CandleChart({ candles = [], currentPrice = 0, asset = "", timeframe = "M1", flex = false }) {
   const canvasRef  = useRef(null);
-  const [timer, setTimer]   = useState(60);
-  const [alert, setAlert]   = useState(false);
+  const wrapRef    = useRef(null);
+  const [timer, setTimer] = useState(60);
+  const [alert, setAlert] = useState(false);
   const offsetXRef  = useRef(0);
   const offsetYRef  = useRef(0);
   const scaleRef    = useRef(1);
@@ -13,16 +14,16 @@ export default function CandleChart({ candles = [], currentPrice = 0, asset = ""
   const dataRef     = useRef({ candles, currentPrice });
   dataRef.current   = { candles, currentPrice };
 
-  // Timer countdown
+  // Timer countdown with 10s alert
   useEffect(() => {
     const tick = () => {
-      const s = 60 - new Date().getSeconds() || 60;
+      const s = (60 - new Date().getSeconds()) || 60;
       setTimer(s);
       if (s <= 10) {
         setAlert(true);
         if (navigator.vibrate) navigator.vibrate(40);
         try {
-          const ac  = new (window.AudioContext || window.webkitAudioContext)();
+          const ac = new (window.AudioContext || window.webkitAudioContext)();
           const osc = ac.createOscillator();
           const g   = ac.createGain();
           osc.connect(g); g.connect(ac.destination);
@@ -40,14 +41,17 @@ export default function CandleChart({ candles = [], currentPrice = 0, asset = ""
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const wrap   = wrapRef.current;
+    if (!canvas || !wrap) return;
     const { candles, currentPrice } = dataRef.current;
-    const ctx  = canvas.getContext("2d");
-    const DPR  = window.devicePixelRatio || 1;
-    const W    = canvas.offsetWidth  || canvas.parentElement?.clientWidth || 360;
-    const H    = canvas.offsetHeight || (fullHeight ? 300 : 220);
+    const ctx = canvas.getContext("2d");
+    const DPR = window.devicePixelRatio || 1;
+    const W   = wrap.clientWidth  || 360;
+    const H   = wrap.clientHeight || 220;
     canvas.width  = W * DPR;
     canvas.height = H * DPR;
+    canvas.style.width  = W + "px";
+    canvas.style.height = H + "px";
     ctx.scale(DPR, DPR);
 
     const AXIS_W = 72;
@@ -60,23 +64,24 @@ export default function CandleChart({ candles = [], currentPrice = 0, asset = ""
     ctx.fillRect(0, 0, W, H);
     if (!candles.length) return;
 
-    const scale  = scaleRef.current;
-    const SHOW   = Math.max(20, Math.round(60 / scale));
-    const total  = candles.length;
-    const endIdx = Math.max(SHOW, Math.min(total, total - offsetXRef.current));
+    const scale   = scaleRef.current;
+    const SHOW    = Math.max(10, Math.round(60 / scale));
+    const total   = candles.length;
+    const endIdx  = Math.max(SHOW, Math.min(total, total - offsetXRef.current));
     const startIdx = Math.max(0, endIdx - SHOW);
-    const slice  = candles.slice(startIdx, endIdx);
+    const slice   = candles.slice(startIdx, endIdx);
     if (!slice.length) return;
 
     const highs  = slice.map(c => parseFloat(c.high));
     const lows   = slice.map(c => parseFloat(c.low));
     let maxP     = Math.max(...highs, currentPrice || 0);
     let minP     = Math.min(...lows, currentPrice || 99999);
-    const pad    = (maxP - minP) * 0.1 || 1;
+    const rng    = (maxP - minP) || 1;
+    const pad    = rng * 0.1;
     maxP += pad; minP -= pad;
     const shift  = offsetYRef.current / (chartH / (maxP - minP));
     maxP += shift; minP += shift;
-    const range  = maxP - minP || 1;
+    const range  = (maxP - minP) || 1;
     const toY    = p => PAD_T + chartH - ((parseFloat(p) - minP) / range) * chartH;
 
     // Grid
@@ -89,7 +94,7 @@ export default function CandleChart({ candles = [], currentPrice = 0, asset = ""
     }
     ctx.setLineDash([]);
 
-    // Candles — gold bull, blue bear
+    // Candles
     const barGap = chartW / Math.max(slice.length, 1);
     const barW   = Math.max(1.5, barGap * 0.65);
     slice.forEach((c, i) => {
@@ -113,27 +118,25 @@ export default function CandleChart({ candles = [], currentPrice = 0, asset = ""
     if (currentPrice) {
       const py = toY(currentPrice);
       if (py > PAD_T && py < H - PAD_B) {
-        ctx.strokeStyle = "rgba(0,229,255,0.55)";
-        ctx.lineWidth   = 1;
+        ctx.strokeStyle = "rgba(0,229,255,0.5)"; ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(chartW, py); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle   = "#00E5FF";
+        ctx.fillStyle = "#00E5FF";
         ctx.fillRect(chartW + 1, py - 10, AXIS_W - 2, 20);
-        ctx.fillStyle   = "#0A0D12";
-        ctx.font        = `bold 10px 'Share Tech Mono', monospace`;
-        ctx.textAlign   = "left";
+        ctx.fillStyle = "#0A0D12";
+        ctx.font      = `bold 10px 'Share Tech Mono', monospace`;
+        ctx.textAlign = "left";
         ctx.fillText(parseFloat(currentPrice).toFixed(2), chartW + 5, py + 4);
       }
     }
 
     // Price axis
-    ctx.strokeStyle = "rgba(0,229,255,0.07)";
-    ctx.lineWidth   = 1;
+    ctx.strokeStyle = "rgba(0,229,255,0.07)"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(chartW, 0); ctx.lineTo(chartW, H); ctx.stroke();
-    ctx.fillStyle   = "#607080";
-    ctx.font        = `10px 'Share Tech Mono', monospace`;
-    ctx.textAlign   = "left";
+    ctx.fillStyle = "#607080";
+    ctx.font      = `10px 'Share Tech Mono', monospace`;
+    ctx.textAlign = "left";
     for (let i = 0; i <= 5; i++) {
       const price = minP + (range / 5) * (5 - i);
       const y     = PAD_T + (chartH / 5) * i;
@@ -141,11 +144,31 @@ export default function CandleChart({ candles = [], currentPrice = 0, asset = ""
         ctx.fillText(price.toFixed(2), chartW + 5, y + 4);
       }
     }
-  }, [fullHeight]);
 
-  useEffect(() => { draw(); }, [candles, currentPrice, draw]);
+    // Chart header overlay
+    ctx.fillStyle = "rgba(0,229,255,0.5)";
+    ctx.font      = `10px 'Share Tech Mono', monospace`;
+    ctx.textAlign = "left";
+    ctx.fillText(`${asset.replace("_","")} ${timeframe}`, 8, 18);
+    ctx.fillStyle  = alert ? "#FF3B5C" : "rgba(0,229,255,0.6)";
+    ctx.textAlign  = "right";
+    const mm = String(Math.floor(timer / 60)).padStart(2, "0");
+    const ss = String(timer % 60).padStart(2, "0");
+    ctx.fillText(`${mm}:${ss}`, chartW - 6, 18);
+  }, [asset, timeframe, timer, alert]);
 
-  // Pointer events
+  useEffect(() => {
+    draw();
+    const t = setTimeout(draw, 80);
+    return () => clearTimeout(t);
+  }, [candles, currentPrice, draw]);
+
+  useEffect(() => {
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [draw]);
+
+  // Pointer events — XY pan + pinch zoom
   const onDown = (e) => {
     isDragging.current = true;
     const p = e.touches ? e.touches[0] : e;
@@ -160,58 +183,44 @@ export default function CandleChart({ candles = [], currentPrice = 0, asset = ""
 
   const onMove = (e) => {
     if (!isDragging.current) return;
-    // Pinch zoom
     if (e.touches?.length === 2) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
+      const dist  = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
       const delta = dist - lastDist.current;
-      scaleRef.current = Math.max(0.5, Math.min(5, scaleRef.current + delta * 0.01));
-      lastDist.current = dist;
-      draw();
-      return;
+      scaleRef.current   = Math.max(0.3, Math.min(8, scaleRef.current + delta * 0.01));
+      lastDist.current   = dist;
+      draw(); return;
     }
-    e.preventDefault();
+    e.stopPropagation();
     const p  = e.touches ? e.touches[0] : e;
     const dx = p.clientX - lastPos.current.x;
     const dy = p.clientY - lastPos.current.y;
     lastPos.current = { x: p.clientX, y: p.clientY };
     const total = dataRef.current.candles.length;
-    offsetXRef.current = Math.max(-(total - 20), Math.min(total - 20, offsetXRef.current - Math.round(dx / 5)));
+    offsetXRef.current = Math.max(-(total - 10), Math.min(total - 10, offsetXRef.current - Math.round(dx / 4)));
     offsetYRef.current += dy;
     draw();
   };
 
   const onUp = () => { isDragging.current = false; };
 
-  // Double tap reset
+  // Double-tap reset
   const lastTap = useRef(0);
   const onTap   = () => {
     const now = Date.now();
     if (now - lastTap.current < 300) {
-      offsetXRef.current = 0;
-      offsetYRef.current = 0;
-      scaleRef.current   = 1;
+      offsetXRef.current = 0; offsetYRef.current = 0; scaleRef.current = 1;
       draw();
     }
     lastTap.current = now;
   };
 
-  const mm = String(Math.floor(timer / 60)).padStart(2, "0");
-  const ss = String(timer % 60).padStart(2, "0");
-
   return (
-    <div className="chart-wrap"
-      style={{ touchAction: "none" }}
+    <div ref={wrapRef}
+      style={{ flex: flex ? 1 : "none", height: flex ? undefined : "220px", position:"relative", overflow:"hidden", touchAction:"none", cursor:"crosshair", minHeight: flex ? "150px" : "220px" }}
       onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
       onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
       onClick={onTap}>
-      <div className="chart-header">
-        <span className="chart-label">{asset.replace("_","")} {timeframe}</span>
-        <span className={`chart-timer ${alert ? "timer-alert" : ""}`}>{mm}:{ss}</span>
-      </div>
-      <canvas ref={canvasRef} className={fullHeight ? "candle-canvas-full" : "candle-canvas"} />
+      <canvas ref={canvasRef} style={{ display:"block", position:"absolute", top:0, left:0 }} />
     </div>
   );
 }

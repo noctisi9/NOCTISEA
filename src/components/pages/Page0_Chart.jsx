@@ -1,33 +1,38 @@
-import { useState, useEffect, useRef } from "react";
 import { useApp } from "../../context/AppContext";
 import CandleChart from "../trading/CandleChart";
-import StatusRibbon from "../layout/StatusRibbon";
 
 export default function Page0_Chart() {
   const { state } = useApp();
   const dir = state.signals.direction;
-  const ao  = state.signals.ao || 0;
-  const ac  = state.signals.ac || 0;
+  const isBuy  = dir === "BUY";
+  const isSell = dir === "SELL";
+  const isSpike = state.signals.spikeWarning;
 
   return (
-    <div className="page-container">
+    <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
       <CandleChart
         candles={state.candles}
         currentPrice={state.currentPrice}
         asset={state.activeAsset}
         timeframe={state.activeTf}
-        fullHeight
+        flex
       />
-      <div className="signal-strip">
-        <div className={`signal-box ${dir === "BUY" ? "buy" : dir === "SELL" ? "sell" : "neutral"}`}>
-          <span className="sig-arrow">{dir === "BUY" ? "▲" : dir === "SELL" ? "▼" : "◈"}</span>
-          <span className="sig-word">{dir || "SCANNING"}</span>
-          {!state.signals.safe && state.signals.e1Signal && (
-            <span className="sig-warn">⚠ {state.signals.reason}</span>
-          )}
-        </div>
+      <div style={{
+        flexShrink:0, padding:"14px 16px",
+        background: isSpike ? "rgba(255,214,0,0.12)" : isBuy ? "rgba(0,255,136,0.08)" : isSell ? "rgba(255,59,92,0.08)" : "rgba(10,13,18,0.98)",
+        borderTop: `1px solid ${isSpike ? "rgba(255,214,0,0.4)" : isBuy ? "rgba(0,255,136,0.35)" : isSell ? "rgba(255,59,92,0.35)" : "rgba(0,229,255,0.1)"}`,
+        display:"flex", alignItems:"center", justifyContent:"center", gap:"12px",
+      }}>
+        <span style={{ fontSize:"22px" }}>
+          {isSpike ? "⚡" : isBuy ? "▲" : isSell ? "▼" : "◈"}
+        </span>
+        <span style={{
+          fontFamily:"'Orbitron',monospace", fontSize:"22px", fontWeight:900, letterSpacing:"0.25em",
+          color: isSpike ? "#FFD600" : isBuy ? "#00FF88" : isSell ? "#FF3B5C" : "#607080",
+        }}>
+          {isSpike ? "SPIKE WARNING" : dir || "SCANNING"}
+        </span>
       </div>
-      <StatusRibbon />
     </div>
   );
 }

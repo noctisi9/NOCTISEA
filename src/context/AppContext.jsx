@@ -2,7 +2,6 @@ import React, { createContext, useContext, useReducer, useRef, useCallback } fro
 import { WelfordRollingEngine } from '../engines/WelfordEngine';
 import { SyntheticOrderflowMatrix } from '../engines/OrderflowEngine';
 import { TickEngine } from '../engines/TickEngine';
-import { SignalFusion } from '../engines/SignalFusion';
 
 const AppContext = createContext(null);
 
@@ -14,12 +13,22 @@ const initialState = {
   currentView: "trading",
   drawerOpen: false,
   account: { token: "", balance: 0, currency: "USD", username: "" },
-  signals: { ao: 0, ac: 0, direction: null, safe: false, reason: "" },
+  signals: {
+    ao: 0, ac: 0,
+    direction: null,     // final fused signal
+    e1Signal: null,      // AO/AC signal
+    ofSignal: null,      // orderflow signal
+    tickSignal: null,    // tick engine signal
+    spikeWarning: false, // welford compression
+    confidence: 0,
+    reason: "",
+    sigmaMean: 0,
+  },
   candles: [],
   currentPrice: 0,
-  orderflow: { pocLevel: 0, cumulativeDelta: 0, absorptionDetected: false, profile: [] },
+  orderflow: { pocLevel: 0, cumulativeDelta: 0, absorptionDetected: false, profile: [], totalVolume: 0 },
   tickStats: { hz: 0, bullTicks: 0, bearTicks: 0, bullPct: 50, bearPct: 50, avgVelocity: 0 },
-  welford: { stdDev: 0, mean: 0, compressionWarning: false },
+  welford: { stdDev: 0, mean: 0, compressionWarning: false, sigmaMean: 0 },
   positions: [],
   pnl: 0,
   history: [],
@@ -30,54 +39,48 @@ const initialState = {
 
 function reducer(state, action) {
   switch (action.type) {
-    case "SET_CONNECTED":      return { ...state, connected: action.payload };
-    case "SET_ENVIRONMENT":    return { ...state, environment: action.payload };
-    case "SET_ASSET":          return { ...state, activeAsset: action.payload, candles: [], currentPrice: 0 };
-    case "SET_TF":             return { ...state, activeTf: action.payload, candles: [] };
-    case "SET_VIEW":           return { ...state, currentView: action.payload };
-    case "TOGGLE_DRAWER":      return { ...state, drawerOpen: !state.drawerOpen };
-    case "CLOSE_DRAWER":       return { ...state, drawerOpen: false };
-    case "SET_ACCOUNT":        return { ...state, account: { ...state.account, ...action.payload } };
-    case "SET_SIGNALS":        return { ...state, signals: action.payload };
-    case "SET_CANDLES":        return { ...state, candles: action.payload };
-    case "SET_PRICE":          return { ...state, currentPrice: action.payload };
-    case "SET_ORDERFLOW":      return { ...state, orderflow: action.payload };
-    case "SET_TICK_STATS":     return { ...state, tickStats: action.payload };
-    case "SET_WELFORD":        return { ...state, welford: action.payload };
-    case "SET_POSITIONS":      return { ...state, positions: action.payload };
-    case "ADD_POSITION":       return { ...state, positions: [...state.positions, action.payload] };
-    case "SET_PNL":            return { ...state, pnl: action.payload };
-    case "ADD_HISTORY":        return { ...state, history: [action.payload, ...state.history] };
-    case "ADD_NOTIFICATION":   return { ...state, notifications: [action.payload, ...state.notifications].slice(0, 50) };
-    case "SET_MARGIN_ERROR":   return { ...state, marginError: action.payload };
-    case "CLEAR_MARGIN_ERROR": return { ...state, marginError: null };
-    case "SET_CONNECT_ERROR":  return { ...state, connectError: action.payload };
-    case "CLEAR_CONNECT_ERROR":return { ...state, connectError: null };
+    case "SET_CONNECTED":       return { ...state, connected: action.payload };
+    case "SET_ENVIRONMENT":     return { ...state, environment: action.payload };
+    case "SET_ASSET":           return { ...state, activeAsset: action.payload, candles: [], currentPrice: 0 };
+    case "SET_TF":              return { ...state, activeTf: action.payload, candles: [] };
+    case "SET_VIEW":            return { ...state, currentView: action.payload };
+    case "TOGGLE_DRAWER":       return { ...state, drawerOpen: !state.drawerOpen };
+    case "CLOSE_DRAWER":        return { ...state, drawerOpen: false };
+    case "SET_ACCOUNT":         return { ...state, account: { ...state.account, ...action.payload } };
+    case "SET_SIGNALS":         return { ...state, signals: { ...state.signals, ...action.payload } };
+    case "SET_CANDLES":         return { ...state, candles: action.payload };
+    case "SET_PRICE":           return { ...state, currentPrice: action.payload };
+    case "SET_ORDERFLOW":       return { ...state, orderflow: action.payload };
+    case "SET_TICK_STATS":      return { ...state, tickStats: action.payload };
+    case "SET_WELFORD":         return { ...state, welford: action.payload };
+    case "ADD_HISTORY":         return { ...state, history: [action.payload, ...state.history] };
+    case "ADD_NOTIFICATION":    return { ...state, notifications: [action.payload, ...state.notifications].slice(0, 50) };
+    case "SET_MARGIN_ERROR":    return { ...state, marginError: action.payload };
+    case "CLEAR_MARGIN_ERROR":  return { ...state, marginError: null };
+    case "SET_CONNECT_ERROR":   return { ...state, connectError: action.payload };
+    case "CLEAR_CONNECT_ERROR": return { ...state, connectError: null };
     default: return state;
   }
 }
 
 const SYMBOL_MAP = { BOOM_1000: "BOOM1000", CRASH_1000: "CRASH1000" };
-const GRAN_MAP   = { M1: 60, M5: 300, M15: 900, M30: 1800, H1: 3600, H4: 14400, D1: 86400 };
+const GRAN_MAP   = { M1:60, M5:300, M15:900, M30:1800, H1:3600, H4:14400, D1:86400 };
 const WS_URL     = "wss://ws.binaryws.com/websockets/v3?app_id=1089";
 
 export function AppProvider({ children, navigate }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  const wsRef       = useRef(null);
-  const bufRef      = useRef([]);   // candle buffer
-  const stateRef    = useRef(state);
-  const tokenRef    = useRef("");
-  stateRef.current  = state;
+  const wsRef        = useRef(null);
+  const bufRef       = useRef([]);
+  const stateRef     = useRef(state);
+  const tokenRef     = useRef("");
+  const fusionRef    = useRef(null);
+  stateRef.current   = state;
 
-  // Engine instances — persistent across renders
+  // Engine instances
   const welfordRef   = useRef(new WelfordRollingEngine(1000));
   const orderflowRef = useRef(new SyntheticOrderflowMatrix(0.01, 500));
   const tickEngRef   = useRef(new TickEngine());
-  const fusionRef    = useRef(new SignalFusion());
-
-  // Ticker for fusion polling every 100ms
-  const fusionTimer  = useRef(null);
 
   // ── Notifications ──────────────────────────────────────
   const requestNotificationPermission = () => {
@@ -112,40 +115,85 @@ export function AppProvider({ children, navigate }) {
     return ao - sma5;
   };
 
-  // ── Signal Fusion polling ──────────────────────────────
-  const startFusionLoop = useCallback(() => {
-    if (fusionTimer.current) clearInterval(fusionTimer.current);
-    fusionTimer.current = setInterval(() => {
-      const buf = bufRef.current;
-      if (buf.length < 34) return;
-      const ao  = computeAO(buf);
-      const ac  = computeAC(buf);
-      const asset = stateRef.current.activeAsset;
-      const of  = stateRef.current.orderflow;
-      const wf  = stateRef.current.welford;
+  // ── Signal Fusion ──────────────────────────────────────
+  const runFusion = useCallback(() => {
+    const buf   = bufRef.current;
+    if (buf.length < 34) return;
 
-      const result = fusionRef.current.evaluate({ ao, ac, asset, orderflow: of, welford: wf });
+    const ao    = computeAO(buf);
+    const ac    = computeAC(buf);
+    const asset = stateRef.current.activeAsset;
+    const of    = stateRef.current.orderflow;
+    const wf    = stateRef.current.welford;
+    const ts    = stateRef.current.tickStats;
 
-      const prevDir = stateRef.current.signals.direction;
-      if (result.signal && result.signal !== prevDir) {
-        pushNotification(
-          `🔔 NOCTIS SIGNAL`,
-          `${result.signal === "BUY" ? "▲ BUY" : "▼ SELL"} ${asset.replace("_"," ")} — ${result.reason}`
-        );
+    // Engine 1: AO + AC zero-line alignment
+    let e1Signal = null;
+    if (asset === "BOOM_1000"  && ao < 0 && ac < 0) e1Signal = "SELL";
+    if (asset === "CRASH_1000" && ao > 0 && ac > 0) e1Signal = "BUY";
+
+    // Engine 2: Orderflow CVD + absorption
+    let ofSignal = null;
+    if (!of.absorptionDetected) {
+      if (of.cumulativeDelta > 10)  ofSignal = "BUY";
+      if (of.cumulativeDelta < -10) ofSignal = "SELL";
+    }
+
+    // Engine 3: Tick/Welford
+    let tickSignal = null;
+    const spikeWarning = wf.compressionWarning && ts.hz < 8;
+    if (!spikeWarning) {
+      const bullBias = (ts.bullTicks || 0) > (ts.bearTicks || 0);
+      if (bullBias && ts.hz >= 8)  tickSignal = "BUY";
+      if (!bullBias && ts.hz >= 8) tickSignal = "SELL";
+    } else {
+      tickSignal = "SPIKE WARNING";
+    }
+
+    // Confidence calculation
+    const agreeing = [e1Signal, ofSignal, tickSignal === "SPIKE WARNING" ? null : tickSignal]
+      .filter(s => s !== null && s === e1Signal).length;
+    let confidence = 0;
+    if (e1Signal) {
+      confidence = agreeing >= 3 ? 95
+        : agreeing === 2 ? 70
+        : 45;
+      // Boost if CVD strong and Hz normal
+      if (Math.abs(of.cumulativeDelta) > 30 && ts.hz >= 10 && ts.hz <= 18) {
+        confidence = Math.min(99, confidence + 10);
       }
+    }
 
-      dispatch({ type: "SET_SIGNALS", payload: {
-        ao, ac,
-        direction: result.signal,
-        safe: result.safe,
-        reason: result.reason,
-        e1Signal: result.e1Signal,
-        e2Safe: result.e2Safe,
-        e3Safe: result.e3Safe,
-      }});
-      dispatch({ type: "SET_CANDLES", payload: [...buf.slice(-100)] });
-    }, 100);
+    // Final signal — e1 must exist, spike overrides all
+    const direction = spikeWarning ? null : (e1Signal || null);
+
+    const prevDir = stateRef.current.signals.direction;
+    const prevSpike = stateRef.current.signals.spikeWarning;
+
+    if (direction && direction !== prevDir) {
+      pushNotification(
+        `🔔 NOCTIS SIGNAL`,
+        `${direction === "BUY" ? "▲ BUY" : "▼ SELL"} ${asset.replace("_"," ")} — ${confidence}% confidence`
+      );
+    }
+    if (spikeWarning && !prevSpike) {
+      pushNotification("⚡ SPIKE WARNING", `${asset.replace("_"," ")} — Compression detected. Exit positions.`);
+    }
+
+    dispatch({ type: "SET_SIGNALS", payload: {
+      ao, ac, direction,
+      e1Signal, ofSignal, tickSignal,
+      spikeWarning, confidence,
+      reason: spikeWarning ? "Compression detected" : direction ? `${confidence}% confidence` : "Engines not aligned",
+    }});
+    dispatch({ type: "SET_CANDLES", payload: [...buf.slice(-100)] });
   }, [pushNotification]);
+
+  // Start fusion polling loop
+  const startFusion = useCallback(() => {
+    if (fusionRef.current) clearInterval(fusionRef.current);
+    fusionRef.current = setInterval(runFusion, 200);
+  }, [runFusion]);
 
   // ── WS send ────────────────────────────────────────────
   const wsSend = useCallback((payload) => {
@@ -153,18 +201,16 @@ export function AppProvider({ children, navigate }) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
   }, []);
 
-  // ── Subscribe to asset + timeframe ────────────────────
+  // ── Subscribe ──────────────────────────────────────────
   const subscribeToAsset = useCallback((asset, tf = "M1") => {
     const symbol = SYMBOL_MAP[asset] || "BOOM1000";
     const gran   = GRAN_MAP[tf] || 60;
     wsSend({ forget_all: "candles" });
     wsSend({ forget_all: "ticks" });
-    // Reset engines on new subscription
     bufRef.current = [];
     orderflowRef.current.reset();
     tickEngRef.current.reset();
     welfordRef.current.reset();
-    // Subscribe
     wsSend({ ticks_history: symbol, count: 200, end: "latest", style: "candles", granularity: gran, subscribe: 1 });
     wsSend({ ticks: symbol, subscribe: 1 });
   }, [wsSend]);
@@ -177,14 +223,21 @@ export function AppProvider({ children, navigate }) {
         dispatch({ type: "SET_CONNECT_ERROR", payload: `${data.error.code}: ${data.error.message}` });
         return;
       }
-
       switch (data.msg_type) {
-        case "candles":
-          bufRef.current = data.candles.map(c => ({
-            open: c.open, high: c.high, low: c.low, close: c.close, epoch: c.epoch
-          }));
+        case "authorize":
+          dispatch({ type: "SET_ACCOUNT", payload: { balance: data.authorize.balance, currency: data.authorize.currency, username: data.authorize.loginid } });
+          dispatch({ type: "SET_ENVIRONMENT", payload: data.authorize.is_virtual ? "DEMO" : "LIVE" });
+          wsSend({ balance: 1, subscribe: 1 });
+          subscribeToAsset(stateRef.current.activeAsset, stateRef.current.activeTf);
           break;
-
+        case "balance":
+          dispatch({ type: "SET_ACCOUNT", payload: { balance: data.balance.balance, currency: data.balance.currency } });
+          break;
+        case "candles":
+          if (data.candles) {
+            bufRef.current = data.candles.map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, epoch: c.epoch }));
+          }
+          break;
         case "ohlc": {
           const c   = data.ohlc;
           const buf = bufRef.current;
@@ -198,31 +251,36 @@ export function AppProvider({ children, navigate }) {
           dispatch({ type: "SET_PRICE", payload: parseFloat(c.close) });
           break;
         }
-
         case "tick": {
           const price = parseFloat(data.tick.quote);
           dispatch({ type: "SET_PRICE", payload: price });
 
-          // Feed all 3 engines on every tick
+          // Feed all 3 engines
           const wf = welfordRef.current.update(price);
-          dispatch({ type: "SET_WELFORD", payload: { stdDev: wf.stdDev, mean: wf.mean, compressionWarning: wf.compressionWarning } });
+          dispatch({ type: "SET_WELFORD", payload: {
+            stdDev:            wf.stdDev,
+            mean:              wf.mean,
+            compressionWarning: wf.compressionWarning,
+            sigmaMean:         welfordRef.current.sigmaMean || 0,
+          }});
 
           const of = orderflowRef.current.processTick(price);
-          if (of) dispatch({ type: "SET_ORDERFLOW", payload: { pocLevel: of.pocLevel, cumulativeDelta: of.cumulativeDelta, absorptionDetected: of.absorptionDetected, profile: of.profile } });
+          if (of) dispatch({ type: "SET_ORDERFLOW", payload: {
+            pocLevel:           of.pocLevel,
+            cumulativeDelta:    of.cumulativeDelta,
+            absorptionDetected: of.absorptionDetected,
+            profile:            of.profile,
+            totalVolume:        of.totalVolume || 0,
+          }});
 
           const ts = tickEngRef.current.processTick(price);
           dispatch({ type: "SET_TICK_STATS", payload: ts });
           break;
         }
-
-        case "balance":
-          dispatch({ type: "SET_ACCOUNT", payload: { balance: data.balance.balance, currency: data.balance.currency } });
-          break;
-
         default: break;
       }
-    } catch(e) { console.error("WS error:", e); }
-  }, []);
+    } catch(e) { console.error("WS parse error:", e); }
+  }, [subscribeToAsset, wsSend]);
 
   // ── Connect ────────────────────────────────────────────
   const connectDeriv = useCallback((token) => {
@@ -235,20 +293,24 @@ export function AppProvider({ children, navigate }) {
 
     ws.onopen = () => {
       dispatch({ type: "SET_CONNECTED", payload: true });
-      if (token) ws.send(JSON.stringify({ authorize: token }));
-      subscribeToAsset(stateRef.current.activeAsset, stateRef.current.activeTf);
-      startFusionLoop();
+      if (token) {
+        ws.send(JSON.stringify({ authorize: token }));
+      } else {
+        subscribeToAsset(stateRef.current.activeAsset, stateRef.current.activeTf);
+      }
+      startFusion();
     };
     ws.onmessage = handleMessage;
     ws.onclose   = () => {
       dispatch({ type: "SET_CONNECTED", payload: false });
+      if (fusionRef.current) clearInterval(fusionRef.current);
       setTimeout(() => connectDeriv(tokenRef.current), 5000);
     };
     ws.onerror = () => {
       dispatch({ type: "SET_CONNECTED", payload: false });
       dispatch({ type: "SET_CONNECT_ERROR", payload: "Connection failed" });
     };
-  }, [handleMessage, subscribeToAsset, startFusionLoop]);
+  }, [handleMessage, subscribeToAsset, startFusion]);
 
   const connectPublic = useCallback(() => connectDeriv(null), [connectDeriv]);
 

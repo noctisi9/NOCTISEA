@@ -48,7 +48,8 @@ export class WelfordRollingEngine {
     this._updateSigma(stdDev);
     const compressionWarning = this._detectCompression(stdDev);
 
-    return { mean: this.mean, variance, stdDev, compressionWarning };
+    this.lastSigmaMean = this.sigmaMean;
+    return { mean: this.mean, variance, stdDev, compressionWarning, sigmaMean: this.sigmaMean };
   }
 
   _updateSigma(sigma) {
