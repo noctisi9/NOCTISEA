@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -28,26 +31,30 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
       - name: Install dependencies
         run: npm install
 
       - name: Build web app
         run: npm run build
 
-      - name: Install Capacitor CLI
-        run: npm install -g @capacitor/cli
+      - name: Install Capacitor CLI globally
+        run: npm install -g @capacitor/cli@6
 
-      - name: Initialize Capacitor Android
-        run: |
-          npx cap add android || true
-          npx cap sync android
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync android
 
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -58,20 +65,19 @@ jobs:
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v${{ github.run_number }}
-          name: "NOCTIS EA v${{ github.run_number }}"
+          tag_name: build-${{ github.run_number }}
+          name: "NOCTIS EA — Build ${{ github.run_number }}"
           body: |
-            ## NOCTIS EA APK Build
+            ## NOCTIS EA Android APK
             
-            Download the APK below and install on your Android device.
+            **Download:** Click `app-debug.apk` below
             
-            **Install steps:**
-            1. Download `app-debug.apk`
-            2. Open the file on your phone
-            3. Allow "Install from unknown sources" if prompted
-            4. Install and open NOCTIS EA
+            **Install on Android:**
+            1. Download the APK to your phone
+            2. Open the file
+            3. Tap Install (allow unknown sources if asked)
+            4. Open NOCTIS EA
           files: android/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
