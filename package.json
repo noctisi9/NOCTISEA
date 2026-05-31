@@ -1,9 +1,9 @@
 {
   "name": "noctis-ea",
   "private": true,
-  "version": "2.4.1",
+  "version": "3.0.0",
   "type": "module",
-  "description": "NOCTIS EA — Premium Automated Trading Web Application",
+  "description": "NOCTIS EA — Premium Automated Trading Signal App",
   "homepage": "https://noctisi9.github.io/NOCTISEA",
   "scripts": {
     "dev": "vite",
@@ -11,12 +11,19 @@
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
-    "server": "node backend/server.js",
-    "start": "concurrently \"npm run dev\" \"npm run server\""
+    "cap:sync": "npx cap sync android",
+    "cap:build": "npm run build && npx cap sync android"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/local-notifications": "^6.0.0",
+    "@capacitor/push-notifications": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
     "concurrently": "^9.0.1"
   },
   "devDependencies": {
@@ -26,13 +33,5 @@
     "gh-pages": "^6.0.0",
     "vite": "^5.4.1",
     "vite-plugin-pwa": "^0.20.0"
-  },
-  "backendDependencies": {
-    "comment": "Install separately in /backend: npm install express ws cors whatsapp-web.js qrcode",
-    "express": "^4.21.0",
-    "ws": "^8.18.0",
-    "cors": "^2.8.5",
-    "whatsapp-web.js": "^1.26.0",
-    "qrcode": "^1.5.4"
   }
 }
