@@ -14,13 +14,13 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - uses: actions/setup-java@17f84c3641ba7b8f6deff6309fc4c864478f5d62
+      - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: temurin
@@ -49,13 +49,13 @@ jobs:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: ./gradlew assembleDebug --no-daemon
 
-      - uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+      - uses: actions/upload-artifact@v4
         with:
           name: NOCTIS-EA-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - uses: softprops/action-gh-release@26994186c0ac3ef5cae75ac16aa32e8153525f77
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: NOCTIS EA Build ${{ github.run_number }}
