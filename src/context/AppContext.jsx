@@ -15,11 +15,11 @@ const initialState = {
   account: { token: "", balance: 0, currency: "USD", username: "" },
   signals: {
     ao: 0, ac: 0,
-    direction: null,
-    e1Signal: null,
-    ofSignal: null,
-    tickSignal: null,
-    spikeWarning: false,
+    direction: null,     // final fused signal
+    e1Signal: null,      // AO/AC signal
+    ofSignal: null,      // orderflow signal
+    tickSignal: null,    // tick engine signal
+    spikeWarning: false, // welford compression
     confidence: 0,
     reason: "",
     sigmaMean: 0,
@@ -77,10 +77,12 @@ export function AppProvider({ children, navigate }) {
   const fusionRef    = useRef(null);
   stateRef.current   = state;
 
+  // Engine instances
   const welfordRef   = useRef(new WelfordRollingEngine(1000));
   const orderflowRef = useRef(new SyntheticOrderflowMatrix(0.01, 500));
   const tickEngRef   = useRef(new TickEngine());
 
+  // ── Notifications ──────────────────────────────────────
   const requestNotificationPermission = () => {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
@@ -94,6 +96,7 @@ export function AppProvider({ children, navigate }) {
     }
   }, []);
 
+  // ── Indicator computation ──────────────────────────────
   const computeAO = (candles) => {
     if (candles.length < 34) return 0;
     const med   = c => (parseFloat(c.high) + parseFloat(c.low)) / 2;
@@ -112,6 +115,7 @@ export function AppProvider({ children, navigate }) {
     return ao - sma5;
   };
 
+  // ── Signal Fusion ──────────────────────────────────────
   const runFusion = useCallback(() => {
     const buf   = bufRef.current;
     if (buf.length < 34) return;
@@ -123,16 +127,19 @@ export function AppProvider({ children, navigate }) {
     const wf    = stateRef.current.welford;
     const ts    = stateRef.current.tickStats;
 
+    // Engine 1: AO + AC zero-line alignment
     let e1Signal = null;
     if (asset === "BOOM_1000"  && ao < 0 && ac < 0) e1Signal = "SELL";
     if (asset === "CRASH_1000" && ao > 0 && ac > 0) e1Signal = "BUY";
 
+    // Engine 2: Orderflow CVD + absorption
     let ofSignal = null;
     if (!of.absorptionDetected) {
       if (of.cumulativeDelta > 10)  ofSignal = "BUY";
       if (of.cumulativeDelta < -10) ofSignal = "SELL";
     }
 
+    // Engine 3: Tick/Welford
     let tickSignal = null;
     const spikeWarning = wf.compressionWarning && ts.hz < 8;
     if (!spikeWarning) {
@@ -143,23 +150,31 @@ export function AppProvider({ children, navigate }) {
       tickSignal = "SPIKE WARNING";
     }
 
+    // Confidence calculation
     const agreeing = [e1Signal, ofSignal, tickSignal === "SPIKE WARNING" ? null : tickSignal]
       .filter(s => s !== null && s === e1Signal).length;
     let confidence = 0;
     if (e1Signal) {
-      confidence = agreeing >= 3 ? 95 : agreeing === 2 ? 70 : 45;
+      confidence = agreeing >= 3 ? 95
+        : agreeing === 2 ? 70
+        : 45;
+      // Boost if CVD strong and Hz normal
       if (Math.abs(of.cumulativeDelta) > 30 && ts.hz >= 10 && ts.hz <= 18) {
         confidence = Math.min(99, confidence + 10);
       }
     }
 
+    // Final signal — e1 must exist, spike overrides all
     const direction = spikeWarning ? null : (e1Signal || null);
-    const prevDir   = stateRef.current.signals.direction;
+
+    const prevDir = stateRef.current.signals.direction;
     const prevSpike = stateRef.current.signals.spikeWarning;
 
     if (direction && direction !== prevDir) {
-      pushNotification(`🔔 NOCTIS SIGNAL`,
-        `${direction === "BUY" ? "▲ BUY" : "▼ SELL"} ${asset.replace("_"," ")} — ${confidence}% confidence`);
+      pushNotification(
+        `🔔 NOCTIS SIGNAL`,
+        `${direction === "BUY" ? "▲ BUY" : "▼ SELL"} ${asset.replace("_"," ")} — ${confidence}% confidence`
+      );
     }
     if (spikeWarning && !prevSpike) {
       pushNotification("⚡ SPIKE WARNING", `${asset.replace("_"," ")} — Compression detected. Exit positions.`);
@@ -174,16 +189,19 @@ export function AppProvider({ children, navigate }) {
     dispatch({ type: "SET_CANDLES", payload: [...buf.slice(-100)] });
   }, [pushNotification]);
 
+  // Start fusion polling loop
   const startFusion = useCallback(() => {
     if (fusionRef.current) clearInterval(fusionRef.current);
     fusionRef.current = setInterval(runFusion, 200);
   }, [runFusion]);
 
+  // ── WS send ────────────────────────────────────────────
   const wsSend = useCallback((payload) => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
   }, []);
 
+  // ── Subscribe ──────────────────────────────────────────
   const subscribeToAsset = useCallback((asset, tf = "M1") => {
     const symbol = SYMBOL_MAP[asset] || "BOOM1000";
     const gran   = GRAN_MAP[tf] || 60;
@@ -197,6 +215,7 @@ export function AppProvider({ children, navigate }) {
     wsSend({ ticks: symbol, subscribe: 1 });
   }, [wsSend]);
 
+  // ── WS message handler ─────────────────────────────────
   const handleMessage = useCallback((evt) => {
     try {
       const data = JSON.parse(evt.data);
@@ -236,17 +255,22 @@ export function AppProvider({ children, navigate }) {
           const price = parseFloat(data.tick.quote);
           dispatch({ type: "SET_PRICE", payload: price });
 
+          // Feed all 3 engines
           const wf = welfordRef.current.update(price);
           dispatch({ type: "SET_WELFORD", payload: {
-            stdDev: wf.stdDev, mean: wf.mean,
+            stdDev:            wf.stdDev,
+            mean:              wf.mean,
             compressionWarning: wf.compressionWarning,
-            sigmaMean: welfordRef.current.sigmaMean || 0,
+            sigmaMean:         welfordRef.current.sigmaMean || 0,
           }});
 
           const of = orderflowRef.current.processTick(price);
           if (of) dispatch({ type: "SET_ORDERFLOW", payload: {
-            pocLevel: of.pocLevel, cumulativeDelta: of.cumulativeDelta,
-            absorptionDetected: of.absorptionDetected, profile: of.profile, totalVolume: of.totalVolume || 0,
+            pocLevel:           of.pocLevel,
+            cumulativeDelta:    of.cumulativeDelta,
+            absorptionDetected: of.absorptionDetected,
+            profile:            of.profile,
+            totalVolume:        of.totalVolume || 0,
           }});
 
           const ts = tickEngRef.current.processTick(price);
@@ -258,6 +282,7 @@ export function AppProvider({ children, navigate }) {
     } catch(e) { console.error("WS parse error:", e); }
   }, [subscribeToAsset, wsSend]);
 
+  // ── Connect ────────────────────────────────────────────
   const connectDeriv = useCallback((token) => {
     dispatch({ type: "CLEAR_CONNECT_ERROR" });
     tokenRef.current = token || "";
@@ -268,8 +293,11 @@ export function AppProvider({ children, navigate }) {
 
     ws.onopen = () => {
       dispatch({ type: "SET_CONNECTED", payload: true });
-      if (token) ws.send(JSON.stringify({ authorize: token }));
-      else subscribeToAsset(stateRef.current.activeAsset, stateRef.current.activeTf);
+      if (token) {
+        ws.send(JSON.stringify({ authorize: token }));
+      } else {
+        subscribeToAsset(stateRef.current.activeAsset, stateRef.current.activeTf);
+      }
       startFusion();
     };
     ws.onmessage = handleMessage;
