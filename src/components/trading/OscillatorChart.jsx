@@ -31,6 +31,16 @@ export default function OscillatorChart({ values = [], type = "ao" }) {
     ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(W, mid); ctx.stroke();
     ctx.setLineDash([]);
 
+    // Horizontal reference lines
+    [-0.5, 0.5].forEach(f => {
+      const y = mid - (f * (mid - 3));
+      ctx.strokeStyle = "rgba(201,168,76,0.08)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 6]);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
     values.forEach((v, i) => {
       const prev  = i > 0 ? values[i - 1] : v;
       const x     = i * (barW + gap);
@@ -38,18 +48,28 @@ export default function OscillatorChart({ values = [], type = "ao" }) {
       const isPos = v >= 0;
       const rising = v >= prev;
 
-      // AC = blue rising / darker blue falling
-      // AO = red rising / darker red falling
-      let color;
-      if (type === "ac") {
-        color = rising ? "#2979FF" : "#1A4FBB";
-      } else {
-        color = rising ? "#FF3B5C" : "#AA1F3A";
-      }
+      // MT5 native style: gold rising / dark steel falling
+      const color = rising ? "#C9A84C" : "#1E3050";
 
       ctx.fillStyle = color;
       ctx.fillRect(x, isPos ? mid - bh : mid, barW, bh);
     });
+
+    // AC: smooth wave line overlay
+    if (type === "ac") {
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(201,168,76,0.55)";
+      ctx.lineWidth = 1.2;
+      ctx.shadowColor = "#C9A84C";
+      ctx.shadowBlur = 3;
+      values.forEach((v, i) => {
+        const x = i * (barW + gap) + barW / 2;
+        const y = mid - (v / max) * (mid - 3);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
   };
 
   useEffect(() => {
