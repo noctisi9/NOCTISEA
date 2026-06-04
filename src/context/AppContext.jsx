@@ -2,7 +2,6 @@ import React, { createContext, useContext, useReducer, useRef, useCallback } fro
 import { WelfordRollingEngine } from '../engines/WelfordEngine';
 import { SyntheticOrderflowMatrix } from '../engines/OrderflowEngine';
 import { TickEngine } from '../engines/TickEngine';
-import { SecondCandleEngine } from '../engines/SecondCandleEngine';
 
 const AppContext = createContext(null);
 
@@ -24,13 +23,8 @@ const initialState = {
     confidence: 0,
     reason: "",
     sigmaMean: 0,
-    recentSpikes: 0,
-    lvd: 0,
-    phase: "NORMAL",
   },
   candles: [],
-  secondCandles: [],       // synthetic 1-second candles
-  currentSecCandle: null,
   currentPrice: 0,
   orderflow: { pocLevel: 0, cumulativeDelta: 0, absorptionDetected: false, profile: [], totalVolume: 0 },
   tickStats: { hz: 0, bullTicks: 0, bearTicks: 0, bullPct: 50, bearPct: 50, avgVelocity: 0 },
@@ -47,7 +41,7 @@ function reducer(state, action) {
   switch (action.type) {
     case "SET_CONNECTED":       return { ...state, connected: action.payload };
     case "SET_ENVIRONMENT":     return { ...state, environment: action.payload };
-    case "SET_ASSET":           return { ...state, activeAsset: action.payload, candles: [], currentPrice: 0, secondCandles: [], currentSecCandle: null };
+    case "SET_ASSET":           return { ...state, activeAsset: action.payload, candles: [], currentPrice: 0 };
     case "SET_TF":              return { ...state, activeTf: action.payload, candles: [] };
     case "SET_VIEW":            return { ...state, currentView: action.payload };
     case "TOGGLE_DRAWER":       return { ...state, drawerOpen: !state.drawerOpen };
@@ -59,7 +53,6 @@ function reducer(state, action) {
     case "SET_ORDERFLOW":       return { ...state, orderflow: action.payload };
     case "SET_TICK_STATS":      return { ...state, tickStats: action.payload };
     case "SET_WELFORD":         return { ...state, welford: action.payload };
-    case "SET_SEC_CANDLES":     return { ...state, secondCandles: action.payload.candles, currentSecCandle: action.payload.current };
     case "ADD_HISTORY":         return { ...state, history: [action.payload, ...state.history] };
     case "ADD_NOTIFICATION":    return { ...state, notifications: [action.payload, ...state.notifications].slice(0, 50) };
     case "SET_MARGIN_ERROR":    return { ...state, marginError: action.payload };
@@ -84,10 +77,9 @@ export function AppProvider({ children, navigate }) {
   const fusionRef    = useRef(null);
   stateRef.current   = state;
 
-  const welfordRef    = useRef(new WelfordRollingEngine(1000));
-  const orderflowRef  = useRef(new SyntheticOrderflowMatrix(0.01, 500));
-  const tickEngRef    = useRef(new TickEngine());
-  const secCandleRef  = useRef(new SecondCandleEngine(120));
+  const welfordRef   = useRef(new WelfordRollingEngine(1000));
+  const orderflowRef = useRef(new SyntheticOrderflowMatrix(0.01, 500));
+  const tickEngRef   = useRef(new TickEngine());
 
   const requestNotificationPermission = () => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -121,7 +113,7 @@ export function AppProvider({ children, navigate }) {
   };
 
   const runFusion = useCallback(() => {
-    const buf = bufRef.current;
+    const buf   = bufRef.current;
     if (buf.length < 34) return;
 
     const ao    = computeAO(buf);
@@ -130,11 +122,6 @@ export function AppProvider({ children, navigate }) {
     const of    = stateRef.current.orderflow;
     const wf    = stateRef.current.welford;
     const ts    = stateRef.current.tickStats;
-    const sc    = secCandleRef.current;
-
-    const lvd          = sc.lvd;
-    const recentSpikes = sc.recentSpikes;
-    const phase        = sc.getPhase();
 
     let e1Signal = null;
     if (asset === "BOOM_1000"  && ao < 0 && ac < 0) e1Signal = "SELL";
@@ -156,18 +143,14 @@ export function AppProvider({ children, navigate }) {
       tickSignal = "SPIKE WARNING";
     }
 
-    // Phase boosts confidence
     const agreeing = [e1Signal, ofSignal, tickSignal === "SPIKE WARNING" ? null : tickSignal]
       .filter(s => s !== null && s === e1Signal).length;
     let confidence = 0;
     if (e1Signal) {
       confidence = agreeing >= 3 ? 95 : agreeing === 2 ? 70 : 45;
-      if (Math.abs(of.cumulativeDelta) > 30 && ts.hz >= 10 && ts.hz <= 18)
+      if (Math.abs(of.cumulativeDelta) > 30 && ts.hz >= 10 && ts.hz <= 18) {
         confidence = Math.min(99, confidence + 10);
-      // HOT phase on BOOM = spike incoming, boost confidence
-      if (phase === "HOT" && asset === "BOOM_1000") confidence = Math.min(99, confidence + 8);
-      // COOL = deep LVD = spike building
-      if (phase === "COOL" && lvd > 2) confidence = Math.min(99, confidence + 5);
+      }
     }
 
     const direction = spikeWarning ? null : (e1Signal || null);
@@ -187,7 +170,6 @@ export function AppProvider({ children, navigate }) {
       e1Signal, ofSignal, tickSignal,
       spikeWarning, confidence,
       reason: spikeWarning ? "Compression detected" : direction ? `${confidence}% confidence` : "Engines not aligned",
-      recentSpikes, lvd, phase,
     }});
     dispatch({ type: "SET_CANDLES", payload: [...buf.slice(-100)] });
   }, [pushNotification]);
@@ -211,7 +193,6 @@ export function AppProvider({ children, navigate }) {
     orderflowRef.current.reset();
     tickEngRef.current.reset();
     welfordRef.current.reset();
-    secCandleRef.current.reset();
     wsSend({ ticks_history: symbol, count: 200, end: "latest", style: "candles", granularity: gran, subscribe: 1 });
     wsSend({ ticks: symbol, subscribe: 1 });
   }, [wsSend]);
@@ -253,7 +234,6 @@ export function AppProvider({ children, navigate }) {
         }
         case "tick": {
           const price = parseFloat(data.tick.quote);
-          const ts_ms = (data.tick.epoch || Math.floor(Date.now()/1000)) * 1000;
           dispatch({ type: "SET_PRICE", payload: price });
 
           const wf = welfordRef.current.update(price);
@@ -271,10 +251,6 @@ export function AppProvider({ children, navigate }) {
 
           const ts = tickEngRef.current.processTick(price);
           dispatch({ type: "SET_TICK_STATS", payload: ts });
-
-          // Feed 1-second candle engine
-          const sc = secCandleRef.current.processTick(price, ts_ms);
-          dispatch({ type: "SET_SEC_CANDLES", payload: { candles: [...sc.candles], current: sc.current } });
           break;
         }
         default: break;
