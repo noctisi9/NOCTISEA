@@ -1,6 +1,7 @@
+import { PageArrows } from "./Page1_Indicators";
 import { useApp } from "../../context/AppContext";
 
-export default function Page4_Fusion() {
+export default function Page4_Fusion({ onNext, onPrev }) {
   const { state } = useApp();
   const sig = state.signals;
   const dir  = sig.direction;
@@ -22,6 +23,8 @@ export default function Page4_Fusion() {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+      <PageArrows onNext={onNext} onPrev={onPrev} pageIndex={4} totalPages={6} />
+
       <div style={{ padding:"12px 16px 6px", flexShrink:0 }}>
         <div style={{ fontFamily:"'Orbitron',monospace", fontSize:"15px", color:"#00E5FF", letterSpacing:".15em" }}>FUSION CENTER</div>
         <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:"10px", color:"#607080", marginTop:"2px" }}>ENGINE AGREEMENT LAYER</div>
