@@ -1,6 +1,7 @@
+import { PageArrows } from "./Page1_Indicators";
 import { useApp } from "../../context/AppContext";
 
-export default function Page5_Diagnostics() {
+export default function Page5_Diagnostics({ onNext, onPrev }) {
   const { state } = useApp();
   const sig = state.signals;
   const of  = state.orderflow;
@@ -28,6 +29,8 @@ export default function Page5_Diagnostics() {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+      <PageArrows onNext={onNext} onPrev={onPrev} pageIndex={5} totalPages={6} />
+
       <div style={{ padding:"10px 16px 6px", flexShrink:0 }}>
         <div style={{ fontFamily:"'Orbitron',monospace", fontSize:"14px", color:"#00E5FF", letterSpacing:".15em" }}>DIAGNOSTICS</div>
         <div style={{ fontFamily:"'Share Tech Mono',monospace", fontSize:"10px", color:"#607080", marginTop:"2px" }}>FULL MARKET VIEW</div>
