@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from "react";
+import { PageArrows } from "./Page1_Indicators";
 import { useApp } from "../../context/AppContext";
 
 // Build synthetic 1-second OHLC candles from raw tick stream
@@ -124,7 +125,7 @@ function TickCandleChart({ candles = [] }) {
   );
 }
 
-export default function Page3_TickEngine() {
+export default function Page3_TickEngine({ onNext, onPrev }) {
   const { state } = useApp();
   const ts   = state.tickStats;
   const wf   = state.welford;
@@ -171,6 +172,8 @@ export default function Page3_TickEngine() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#0A0D12" }}>
+      <PageArrows onNext={onNext} onPrev={onPrev} pageIndex={3} totalPages={6} />
+
 
       {/* Header */}
       <div style={{ padding: "8px 14px 4px", flexShrink: 0, borderBottom: "1px solid rgba(0,229,255,0.08)" }}>
