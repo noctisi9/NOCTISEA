@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from "react";
+import { PageArrows } from "./Page1_Indicators";
 import { useApp } from "../../context/AppContext";
 
 function getStrengthLabel(ratio) {
@@ -7,7 +8,7 @@ function getStrengthLabel(ratio) {
   return "WEAK";
 }
 
-export default function Page2_Orderflow() {
+export default function Page2_Orderflow({ onNext, onPrev }) {
   const { state } = useApp();
   const canvasRef = useRef(null);
   const dataRef   = useRef({ profile: [], poc: 0, currentPrice: 0, cumulativeDelta: 0 });
@@ -181,6 +182,9 @@ export default function Page2_Orderflow() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#0A0D12" }}>
+      {/* Page navigation arrows */}
+      <PageArrows onNext={onNext} onPrev={onPrev} pageIndex={2} totalPages={6} />
+
 
       {/* Header */}
       <div style={{ padding: "8px 14px 6px", flexShrink: 0, borderBottom: "1px solid rgba(0,229,255,0.08)" }}>
