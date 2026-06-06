@@ -5,11 +5,26 @@ import { TickEngine } from '../engines/TickEngine';
 
 const AppContext = createContext(null);
 
+// Load persisted state from localStorage
+const loadPersisted = () => {
+  try {
+    const h = localStorage.getItem("noctis_history");
+    const asset = localStorage.getItem("noctis_asset");
+    const tf = localStorage.getItem("noctis_tf");
+    return {
+      history: h ? JSON.parse(h) : [],
+      activeAsset: asset || "BOOM_1000",
+      activeTf: tf || "M1",
+    };
+  } catch { return { history: [], activeAsset: "BOOM_1000", activeTf: "M1" }; }
+};
+const _persisted = loadPersisted();
+
 const initialState = {
   connected: false,
   environment: "DEMO",
-  activeAsset: "BOOM_1000",
-  activeTf: "M1",
+  activeAsset: _persisted.activeAsset,
+  activeTf: _persisted.activeTf,
   currentView: "trading",
   drawerOpen: false,
   account: { token: "", balance: 0, currency: "USD", username: "" },
@@ -31,7 +46,7 @@ const initialState = {
   welford: { stdDev: 0, mean: 0, compressionWarning: false, sigmaMean: 0 },
   positions: [],
   pnl: 0,
-  history: [],
+  history: _persisted.history,
   notifications: [],
   marginError: null,
   connectError: null,
@@ -41,8 +56,14 @@ function reducer(state, action) {
   switch (action.type) {
     case "SET_CONNECTED":       return { ...state, connected: action.payload };
     case "SET_ENVIRONMENT":     return { ...state, environment: action.payload };
-    case "SET_ASSET":           return { ...state, activeAsset: action.payload, candles: [], currentPrice: 0 };
-    case "SET_TF":              return { ...state, activeTf: action.payload, candles: [] };
+    case "SET_ASSET": {
+      try { localStorage.setItem("noctis_asset", action.payload); } catch {}
+      return { ...state, activeAsset: action.payload, candles: [], currentPrice: 0 };
+    }
+    case "SET_TF": {
+      try { localStorage.setItem("noctis_tf", action.payload); } catch {}
+      return { ...state, activeTf: action.payload, candles: [] };
+    }
     case "SET_VIEW":            return { ...state, currentView: action.payload };
     case "TOGGLE_DRAWER":       return { ...state, drawerOpen: !state.drawerOpen };
     case "CLOSE_DRAWER":        return { ...state, drawerOpen: false };
@@ -53,7 +74,11 @@ function reducer(state, action) {
     case "SET_ORDERFLOW":       return { ...state, orderflow: action.payload };
     case "SET_TICK_STATS":      return { ...state, tickStats: action.payload };
     case "SET_WELFORD":         return { ...state, welford: action.payload };
-    case "ADD_HISTORY":         return { ...state, history: [action.payload, ...state.history] };
+    case "ADD_HISTORY": {
+      const newHistory = [action.payload, ...state.history].slice(0, 500);
+      try { localStorage.setItem("noctis_history", JSON.stringify(newHistory)); } catch {}
+      return { ...state, history: newHistory };
+    }
     case "ADD_NOTIFICATION":    return { ...state, notifications: [action.payload, ...state.notifications].slice(0, 50) };
     case "SET_MARGIN_ERROR":    return { ...state, marginError: action.payload };
     case "CLEAR_MARGIN_ERROR":  return { ...state, marginError: null };
@@ -175,6 +200,25 @@ export function AppProvider({ children, navigate }) {
         `🔔 NOCTIS SIGNAL`,
         `${direction === "BUY" ? "▲ BUY" : "▼ SELL"} ${asset.replace("_"," ")} — ${confidence}% confidence`
       );
+      // Auto-log signal to history with entry price + estimated exit (5-candle projection)
+      const entryPrice = stateRef.current.currentPrice;
+      const buf = bufRef.current;
+      const last5 = buf.slice(-5);
+      const avgMove = last5.length > 1
+        ? Math.abs(last5.reduce((s,c,i) => i===0 ? 0 : s + (parseFloat(c.close)-parseFloat(last5[i-1].close)), 0) / Math.max(last5.length-1,1))
+        : 0.5;
+      const exitPrice = direction === "BUY"
+        ? entryPrice + avgMove * 5
+        : entryPrice - avgMove * 5;
+      dispatch({ type: "ADD_HISTORY", payload: {
+        id: Date.now(),
+        asset,
+        direction,
+        entryPrice,
+        exitPrice: parseFloat(exitPrice.toFixed(2)),
+        date: new Date().toISOString(),
+        confidence,
+      }});
     }
     if (spikeWarning && !prevSpike) {
       pushNotification("⚡ SPIKE WARNING", `${asset.replace("_"," ")} — Compression detected. Exit positions.`);
